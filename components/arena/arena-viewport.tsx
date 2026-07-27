@@ -1,6 +1,7 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
+import { OrbitControls } from '@react-three/drei'
 import { Suspense } from 'react'
 
 import { MAX_BOSS_HEALTH } from '@/lib/game/content'
@@ -34,7 +35,7 @@ export function ArenaViewport({
       )}
     >
       <Canvas
-        camera={{ position: [0, 1.6, 9.2], fov: 42 }}
+        camera={{ position: [0, 1.2, 5.8], fov: 42 }}
         dpr={[1, 1.75]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         shadows
@@ -42,6 +43,14 @@ export function ArenaViewport({
         <Suspense fallback={null}>
           <ArenaScene state={state} isSpeaking={isSpeaking} wear={wear} />
         </Suspense>
+        <OrbitControls 
+          enableZoom={true} 
+          minDistance={2} 
+          maxDistance={12} 
+          minPolarAngle={0.2} 
+          maxPolarAngle={Math.PI / 2 - 0.05} 
+          enablePan={true}
+        />
       </Canvas>
 
       {/* Enraged heat wash */}

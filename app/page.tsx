@@ -1,6 +1,7 @@
 import { Brain, Flame, Mic, ShieldHalf } from 'lucide-react'
 import Link from 'next/link'
 
+import { GuestEnterButton } from '@/components/auth/guest-enter-button'
 import { Button } from '@/components/ui/button'
 import { RIDDLES } from '@/lib/game/content'
 import { createClient } from '@/lib/supabase/server'
@@ -93,22 +94,40 @@ export default async function HomePage() {
           </p>
 
           <div className="flex flex-col items-center gap-3 sm:flex-row">
-            <Button asChild size="lg" className="gap-2 font-serif tracking-[0.2em] uppercase">
-              <Link href={user ? '/battle' : '/auth/sign-up'}>
-                <Flame className="size-4" />
-                {user ? 'Enter the hall' : 'Climb the mountain'}
-              </Link>
-            </Button>
+            <Button
+              render={
+                <Link href={user ? '/battle' : '/auth/sign-up'}>
+                  <Flame className="size-4" />
+                  {user ? 'Enter the hall' : 'Climb the mountain'}
+                </Link>
+              }
+              size="lg"
+              className="gap-2 font-serif tracking-[0.2em] uppercase"
+            />
             {!user && (
               <Button
-                asChild
+                render={<Link href="/auth/login">I have been here before</Link>}
                 size="lg"
                 variant="ghost"
                 className="font-serif tracking-[0.2em] uppercase"
-              >
-                <Link href="/auth/login">I have been here before</Link>
-              </Button>
+              />
             )}
+          </div>
+
+          {/* Guest access — always visible */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-16 bg-border" />
+              <span className="font-serif text-[10px] tracking-[0.3em] text-muted-foreground/60 uppercase">or</span>
+              <div className="h-px w-16 bg-border" />
+            </div>
+            <GuestEnterButton
+              label="Enter as Guest"
+              className="font-serif text-[11px] tracking-[0.2em] text-muted-foreground uppercase hover:text-primary"
+            />
+            <p className="text-[10px] tracking-widest text-muted-foreground/50 uppercase">
+              No account needed — your duel is saved in this session
+            </p>
           </div>
 
           {/* First riddle as a teaser */}

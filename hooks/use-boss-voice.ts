@@ -102,6 +102,7 @@ export function useBossVoice(enabled: boolean) {
     stop,
     status,
     isSpeaking: status === 'speaking',
+    isLoading: status === 'loading',
     isUnavailable: status === 'unavailable',
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Mic, MicOff, SendHorizontal } from 'lucide-react'
+import { Mic, MicOff, SendHorizontal, Swords } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 interface AnswerInputProps {
   onSubmit: (message: string) => void
   disabled: boolean
+  onStrike?: () => void
 }
 
 type SpeechRecognitionLike = {
@@ -22,7 +23,7 @@ type SpeechRecognitionLike = {
   onend: (() => void) | null
 }
 
-export function AnswerInput({ onSubmit, disabled }: AnswerInputProps) {
+export function AnswerInput({ onSubmit, disabled, onStrike }: AnswerInputProps) {
   const [value, setValue] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [micSupported, setMicSupported] = useState(false)
@@ -126,6 +127,18 @@ export function AnswerInput({ onSubmit, disabled }: AnswerInputProps) {
               className={cn(isListening && 'animate-pulse-ring border-primary text-primary')}
             >
               {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </Button>
+          )}
+          {onStrike && (
+            <Button
+              type="button"
+              variant="destructive"
+              size="icon"
+              onClick={onStrike}
+              disabled={disabled}
+              aria-label="Strike Ignis physically"
+            >
+              <Swords className="size-4" />
             </Button>
           )}
           <Button

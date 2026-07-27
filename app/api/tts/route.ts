@@ -2,9 +2,21 @@ import { STATE_META } from '@/lib/game/content'
 import type { BossState } from '@/lib/game/types'
 import { createClient } from '@/lib/supabase/server'
 
-/** A deep, gravelly preset voice. Override with ELEVENLABS_VOICE_ID. */
-const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'
-const MODEL_ID = 'eleven_turbo_v2_5'
+/**
+ * Ignis voices — free-tier ElevenLabs voices (no paid plan required):
+ *   Adam   : pNInz6obpgDQGcFmaJgB  ← deep, authoritative (default, always free)
+ *   Antoni : ErXwobaYiN019PkySvjV  ← warm, measured
+ *   Josh   : TxGEqnHWrfWFTfGW9XjX  ← young, intense
+ *
+ * Paid-only scarier options (upgrade ElevenLabs to unlock):
+ *   Clyde  : 2EiwWnXFnvU5JabPnv8n  ← gravelly villain
+ *   Thomas : GBv7mTt0atIp3Br8iCZE  ← cold authority
+ *   Arnold : VR6AewLTigWG4xSOukaG  ← raspy, old, commanding
+ *
+ * Override at runtime via ELEVENLABS_VOICE_ID env var.
+ */
+const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Adam — free tier
+const MODEL_ID = 'eleven_multilingual_v2'
 
 export async function POST(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY

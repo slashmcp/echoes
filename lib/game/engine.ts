@@ -104,3 +104,80 @@ export function resolveTurn(
 export function riddleAt(index: number) {
   return RIDDLES[index] ?? null
 }
+
+const STRIKE_IGNIS_LINES = [
+  "You scratched a scale. One. Scale. I've had fleas draw more blood.",
+  "That was — a touch? I thought a moth had landed. Swing harder, morsel.",
+  "Brave. Also completely futile. Your sword hand is shaking.",
+  "Oh. Oh, you hit me. I felt that the way mountains feel rain. Almost.",
+  "Your ancestors would weep at that blow. Were they all this soft?",
+  "I've been scorched by stars. You are not a star.",
+  "Is that the best your body can produce? Disappointing. The riddle would have gone better.",
+  "You dented my pride, not my hide. For that, you owe me blood.",
+  "Vigour without wit. The most expensive kind of useless.",
+  "Physical courage. How quaint. And how entirely wrong for this hall.",
+  "Nine hundred years of sleep and you wake me with *that*? Swing again. I want to laugh again.",
+  "The dragon yawns. You notice a tooth is larger than you are. You swing anyway.",
+] as const
+
+export interface ResolvedStrike {
+  damageToBoss: number
+  damageToPlayer: number
+  ignisLine: string
+  bossHealth: number
+  playerHealth: number
+  shieldCharge: number
+  absorbedByShield: number
+  outcome: 'victory' | 'defeat' | null
+  nextState: BossState
+}
+
+export function resolveStrike(current: {
+  bossHealth: number
+  playerHealth: number
+  shieldCharge: number
+  bossState: BossState
+}): ResolvedStrike {
+  const damageToBoss = clamp(
+    Math.floor(Math.random() * 16) + 15,
+    15,
+    30,
+  )
+  const rawDamageToPlayer = clamp(
+    Math.floor(Math.random() * 11) + 18,
+    18,
+    28,
+  )
+
+  let shieldCharge = current.shieldCharge
+  let absorbedByShield = 0
+  let damageToPlayer = rawDamageToPlayer
+  if (damageToPlayer > 0 && shieldCharge > 0) {
+    absorbedByShield = damageToPlayer
+    damageToPlayer = 0
+    shieldCharge -= 1
+  }
+
+  const bossHealth = clamp(current.bossHealth - damageToBoss, 0, MAX_BOSS_HEALTH)
+  const playerHealth = clamp(current.playerHealth - damageToPlayer, 0, MAX_PLAYER_HEALTH)
+  const outcome: 'victory' | 'defeat' | null =
+    bossHealth <= 0 ? 'victory' : playerHealth <= 0 ? 'defeat' : null
+
+  const nextState: BossState =
+    outcome === 'victory' ? 'defeated' : stateFromHealth(bossHealth, current.bossState)
+
+  const ignisLine =
+    STRIKE_IGNIS_LINES[Math.floor(Math.random() * STRIKE_IGNIS_LINES.length)]
+
+  return {
+    damageToBoss,
+    damageToPlayer,
+    ignisLine,
+    bossHealth,
+    playerHealth,
+    shieldCharge,
+    absorbedByShield,
+    outcome,
+    nextState,
+  }
+}

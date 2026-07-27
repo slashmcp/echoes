@@ -1,12 +1,13 @@
+import { google } from '@ai-sdk/google'
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 
 import { IGNIS_SYSTEM_PROMPT, MAX_BOSS_HEALTH, RIDDLES } from '@/lib/game/content'
-import { resolveTurn, riddleAt } from '@/lib/game/engine'
+import { resolveTurn, resolveStrike, riddleAt } from '@/lib/game/engine'
 import { createClient } from '@/lib/supabase/server'
 import type { BossJudgement } from '@/lib/game/types'
 
-const MODEL = 'google/gemini-3-flash'
+const MODEL = google('gemini-3.5-flash')
 
 const judgementSchema = z.object({
   verdict: z
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'You must be signed in to enter the hall.' }, { status: 401 })
   }
 
-  let body: { sessionId?: string; message?: string }
+  let body: { sessionId?: string; message?: string; action?: 'answer' | 'strike' }
   try {
     body = await request.json()
   } catch {
@@ -41,9 +42,10 @@ export async function POST(request: Request) {
   }
 
   const sessionId = body.sessionId
-  const message = (body.message ?? '').trim().slice(0, 600)
+  const action = body.action ?? 'answer'
+  const message = action === 'strike' ? '⚔️ STRIKE!' : (body.message ?? '').trim().slice(0, 600)
 
-  if (!sessionId || !message) {
+  if (!sessionId || (!message && action === 'answer')) {
     return Response.json({ error: 'A session and an answer are required.' }, { status: 400 })
   }
 
@@ -62,78 +64,114 @@ export async function POST(request: Request) {
     return Response.json({ error: 'This duel has already ended.' }, { status: 409 })
   }
 
-  const { data: history } = await supabase
-    .from('dialogue_logs')
-    .select('speaker, transcript')
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: true })
-    .limit(24)
-
-  const activeRiddle = riddleAt(session.current_riddle_index)
-  const failedAttempts = (history ?? []).filter((h) => h.speaker === 'player').length
-  const shouldHint = failedAttempts > 0 && failedAttempts % 3 === 0
-
-  const bossPct = Math.round((session.boss_health / MAX_BOSS_HEALTH) * 100)
-
-  const transcript = (history ?? [])
-    .map((h) => `${h.speaker === 'player' ? 'MORTAL' : 'YOU'}: ${h.transcript}`)
-    .join('\n')
-
-  const nextRiddle = riddleAt(session.current_riddle_index + 1)
-
-  const context = [
-    `## YOUR CONDITION`,
-    `Health: ${session.boss_health} of ${MAX_BOSS_HEALTH} (${bossPct}%)`,
-    `Current state: ${session.boss_state}`,
-    `The mortal's health: ${session.player_health} of 100`,
-    `Turn: ${session.turn_count + 1}`,
-    ``,
-    `## THE RIDDLE CURRENTLY ON THE TABLE (${session.current_riddle_index + 1} of ${RIDDLES.length})`,
-    activeRiddle
-      ? `Text: ${activeRiddle.prompt}\nTrue answer (NEVER state this outright): ${activeRiddle.answer}`
-      : 'All five riddles are spent. Judge this reply on wit alone.',
-    shouldHint && activeRiddle
-      ? `\nThe mortal has floundered repeatedly. Grudgingly weave in this hint: "${activeRiddle.hint}"`
-      : '',
-    nextRiddle
-      ? `\n## IF the verdict is "correct", pose this next riddle inside your same reply, in your own voice, preserving every clue:\n${nextRiddle.prompt}`
-      : `\n## This was the FINAL riddle. If the verdict is "correct", the mortal has broken you — set nextState to "defeated" and speak your death soliloquy.`,
-    ``,
-    `## THE DUEL SO FAR`,
-    transcript || '(The mortal has not yet spoken.)',
-    ``,
-    `## THE MORTAL NOW SAYS`,
-    message,
-  ]
-    .filter(Boolean)
-    .join('\n')
-
-  let raw: BossJudgement
-  try {
-    const { output } = await generateText({
-      model: MODEL,
-      system: IGNIS_SYSTEM_PROMPT,
-      prompt: context,
-      temperature: 0.9,
-      output: Output.object({ schema: judgementSchema }),
-    })
-    raw = { ...output, advanceRiddle: output.verdict === 'correct' }
-  } catch (error) {
-    console.log('[v0] Ignis brain failed:', error instanceof Error ? error.message : error)
-    return Response.json(
-      { error: 'The dragon fell silent — something disturbed the connection. Try again.' },
-      { status: 502 },
-    )
+  const nowIso = new Date().toISOString()
+  let resolved: ReturnType<typeof resolveTurn> | {
+    judgement: BossJudgement
+    bossHealth: number
+    playerHealth: number
+    shieldCharge: number
+    riddleIndex: number
+    absorbedByShield: number
+    outcome: 'victory' | 'defeat' | null
   }
 
-  const resolved = resolveTurn(raw, {
-    bossHealth: session.boss_health,
-    playerHealth: session.player_health,
-    shieldCharge: session.shield_charge,
-    riddleIndex: session.current_riddle_index,
-  })
+  if (action === 'strike') {
+    const strikeRes = resolveStrike({
+      bossHealth: session.boss_health,
+      playerHealth: session.player_health,
+      shieldCharge: session.shield_charge,
+      bossState: session.boss_state,
+    })
 
-  const nowIso = new Date().toISOString()
+    resolved = {
+      judgement: {
+        verdict: 'wrong',
+        reasoning: 'Mortal struck physically.',
+        speech: strikeRes.ignisLine,
+        nextState: strikeRes.nextState,
+        damageToBoss: strikeRes.damageToBoss,
+        damageToPlayer: strikeRes.damageToPlayer,
+        advanceRiddle: false,
+      },
+      bossHealth: strikeRes.bossHealth,
+      playerHealth: strikeRes.playerHealth,
+      shieldCharge: strikeRes.shieldCharge,
+      riddleIndex: session.current_riddle_index,
+      absorbedByShield: strikeRes.absorbedByShield,
+      outcome: strikeRes.outcome,
+    }
+  } else {
+    const { data: history } = await supabase
+      .from('dialogue_logs')
+      .select('speaker, transcript')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .limit(24)
+
+    const activeRiddle = riddleAt(session.current_riddle_index)
+    const failedAttempts = (history ?? []).filter((h) => h.speaker === 'player').length
+    const shouldHint = failedAttempts > 0 && failedAttempts % 3 === 0
+
+    const bossPct = Math.round((session.boss_health / MAX_BOSS_HEALTH) * 100)
+
+    const transcript = (history ?? [])
+      .map((h) => `${h.speaker === 'player' ? 'MORTAL' : 'YOU'}: ${h.transcript}`)
+      .join('\n')
+
+    const nextRiddle = riddleAt(session.current_riddle_index + 1)
+
+    const context = [
+      `## YOUR CONDITION`,
+      `Health: ${session.boss_health} of ${MAX_BOSS_HEALTH} (${bossPct}%)`,
+      `Current state: ${session.boss_state}`,
+      `The mortal's health: ${session.player_health} of 100`,
+      `Turn: ${session.turn_count + 1}`,
+      ``,
+      `## THE RIDDLE CURRENTLY ON THE TABLE (${session.current_riddle_index + 1} of ${RIDDLES.length})`,
+      activeRiddle
+        ? `Text: ${activeRiddle.prompt}\nTrue answer (NEVER state this outright): ${activeRiddle.answer}`
+        : 'All five riddles are spent. Judge this reply on wit alone.',
+      shouldHint && activeRiddle
+        ? `\nThe mortal has floundered repeatedly. Grudgingly weave in this hint: "${activeRiddle.hint}"`
+        : '',
+      nextRiddle
+        ? `\n## IF the verdict is "correct", pose this next riddle inside your same reply, in your own voice, preserving every clue:\n${nextRiddle.prompt}`
+        : `\n## This was the FINAL riddle. If the verdict is "correct", the mortal has broken you — set nextState to "defeated" and speak your death soliloquy.`,
+      ``,
+      `## THE DUEL SO FAR`,
+      transcript || '(The mortal has not yet spoken.)',
+      ``,
+      `## THE MORTAL NOW SAYS`,
+      message,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    let raw: BossJudgement
+    try {
+      const { output } = await generateText({
+        model: MODEL,
+        system: IGNIS_SYSTEM_PROMPT,
+        prompt: context,
+        temperature: 0.9,
+        output: Output.object({ schema: judgementSchema }),
+      })
+      raw = { ...output, advanceRiddle: output.verdict === 'correct' }
+    } catch (error) {
+      console.log('[v0] Ignis brain failed:', error instanceof Error ? error.message : error)
+      return Response.json(
+        { error: 'The dragon fell silent — something disturbed the connection. Try again.' },
+        { status: 502 },
+      )
+    }
+
+    resolved = resolveTurn(raw, {
+      bossHealth: session.boss_health,
+      playerHealth: session.player_health,
+      shieldCharge: session.shield_charge,
+      riddleIndex: session.current_riddle_index,
+    })
+  }
 
   const { error: updateError } = await supabase
     .from('game_sessions')

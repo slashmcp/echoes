@@ -148,18 +148,21 @@ export function ArenaScene({ state, isSpeaking, wear }: ArenaSceneProps) {
       <color attach="background" args={['#0b0908']} />
       <fog attach="fog" args={['#0b0908', 9, 30]} />
 
-      <ambientLight intensity={0.12} color="#ffb27a" />
-      <hemisphereLight args={['#3a1e10', '#000000', 0.28]} />
+      <ambientLight intensity={0.5} color="#ffffff" />
+      <hemisphereLight args={['#222222', '#050505', 0.6]} />
+      {/* Front light to illuminate the model textures */}
+      <directionalLight position={[0, 4, 10]} intensity={2.8} color="#ffffff" />
+      
       {/* Key light from the fissure below — classic villain uplighting */}
       <spotLight
         position={[0, 9, 7]}
         angle={0.7}
         penumbra={0.9}
-        intensity={intensity * 22 + 8}
-        color="#ffa050"
+        intensity={intensity * 12 + 4}
+        color="#ff7a22"
         castShadow
       />
-      <pointLight position={[-8, 4, 4]} intensity={5} color="#ff7020" distance={22} />
+      <pointLight position={[-8, 4, 4]} intensity={3} color="#ff3b00" distance={22} />
 
       <Pillars />
       <LavaFloor intensity={intensity} />
