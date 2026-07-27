@@ -178,17 +178,17 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
     if (!explored) return null
     switch (type) {
       case 'player': 
-        return <User className="w-7 h-7 text-[#d97736] drop-shadow-[0_0_10px_rgba(217,119,54,0.9)]" />
+        return <User className="w-8 h-8 text-[#d97736] drop-shadow-[0_0_10px_rgba(217,119,54,0.9)]" />
       case 'dragon': 
-        return <Skull className="w-7 h-7 text-red-600 drop-shadow-[0_0_10px_rgba(239,68,68,0.9)]" />
+        return <Skull className="w-8 h-8 text-red-600 drop-shadow-[0_0_10px_rgba(239,68,68,0.9)]" />
       case 'chest': 
-        return <Gem className="w-6 h-6 text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.9)]" />
+        return <Gem className="w-7 h-7 text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.9)]" />
       case 'trap': 
-        return <Flame className="w-6 h-6 text-orange-600 drop-shadow-[0_0_8px_rgba(234,88,12,0.7)]" />
+        return <Flame className="w-7 h-7 text-orange-600 drop-shadow-[0_0_8px_rgba(234,88,12,0.7)]" />
       case 'goal': 
-        return <Target className="w-7 h-7 text-gray-300 drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]" />
+        return <Target className="w-8 h-8 text-gray-300 drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]" />
       default: 
-        return <div className="w-2 h-2 rounded-full bg-[#3a2015] opacity-60" />
+        return <div className="w-2.5 h-2.5 rounded-full bg-[#3a2015] opacity-60" />
     }
   }
 
@@ -222,18 +222,22 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
         </Button>
       </header>
 
-      {/* Grid Map with Tabletop Board Background */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 py-4">
+      {/* Grid Map filling the viewport with Isometric Angled Board */}
+      <div className="flex flex-1 flex-col items-center justify-center p-2 sm:p-4">
         <div 
-          className="relative border-4 border-[#1c120c] bg-cover bg-center p-8 rounded shadow-[0_0_40px_rgba(0,0,0,0.8)]"
+          className="relative flex items-center justify-center border-4 border-[#1c120c] bg-cover bg-center rounded-sm shadow-[0_0_50px_rgba(0,0,0,0.95)] overflow-hidden w-full h-[72vh]"
           style={{ 
-            backgroundImage: "url('/tabletop_board.png')",
-            minWidth: '400px',
-            minHeight: '400px'
+            backgroundImage: "url('/tabletop_board_angled.png')",
           }}
         >
-          {/* Grid Overlay */}
-          <div className="grid grid-cols-7 gap-2 bg-black/45 p-2 rounded-sm backdrop-blur-[1px]">
+          {/* Angled grid layout to match the isometric board perspective */}
+          <div 
+            className="grid grid-cols-7 gap-2 bg-black/40 p-4 rounded border border-[#d97736]/20 backdrop-blur-[1px] shadow-2xl transition-all duration-300"
+            style={{
+              transform: 'rotateX(20deg) rotateZ(-12deg) scale(0.9)',
+              transformStyle: 'preserve-3d',
+            }}
+          >
             {board.map((tile, idx) => {
               const isPlayer = tile.type === 'player'
               const isExplored = tile.explored
@@ -242,13 +246,19 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
                 <div
                   key={`${tile.x}-${tile.y}-${idx}`}
                   className={cn(
-                    "w-12 h-12 flex items-center justify-center transition-all duration-300 rounded border",
-                    isPlayer && "bg-[#d97736]/20 border-[#d97736] shadow-[0_0_15px_rgba(217,119,54,0.6)] scale-105 z-10",
-                    !isPlayer && isExplored && "border-[#d97736]/30 bg-black/45 shadow-[inset_0_0_10px_rgba(0,0,0,0.8)]",
-                    !isExplored && "border-[#2a2a2a]/60 bg-black/95 backdrop-blur-[2px]"
+                    "w-14 h-14 flex items-center justify-center transition-all duration-300 rounded border",
+                    isPlayer && "bg-[#d97736]/35 border-[#d97736] shadow-[0_0_20px_rgba(217,119,54,0.8)] scale-110 z-10 [transform:translateZ(10px)]",
+                    !isPlayer && isExplored && "border-[#d97736]/30 bg-black/55 shadow-[inset_0_0_15px_rgba(0,0,0,0.9)]",
+                    !isExplored && "border-neutral-900 bg-neutral-950/95"
                   )}
+                  style={{
+                    transformStyle: 'preserve-3d',
+                  }}
                 >
-                  {renderIcon(tile.type, isExplored)}
+                  {/* Re-align icon upright so it doesn't lay completely flat */}
+                  <div className={cn(isPlayer && "animate-bounce")} style={{ transform: 'rotateZ(12deg) rotateX(-20deg)' }}>
+                    {renderIcon(tile.type, isExplored)}
+                  </div>
                 </div>
               )
             })}
@@ -256,9 +266,9 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
         </div>
 
         {/* Legend / Instructions */}
-        <div className="text-center text-[#a89f91] font-mono text-xs tracking-widest leading-relaxed max-w-md">
+        <div className="mt-4 text-center text-[#a89f91] font-mono text-xs tracking-widest leading-relaxed max-w-md">
           <p>MOVE USING <kbd className="text-white bg-neutral-850 px-1.5 py-0.5 rounded border border-neutral-700">WASD</kbd> OR <kbd className="text-white bg-neutral-850 px-1.5 py-0.5 rounded border border-neutral-700">D-PAD</kbd> IN THE DARK.</p>
-          <p className="mt-3 flex items-center justify-center gap-4 text-[10px]">
+          <p className="mt-2 flex items-center justify-center gap-4 text-[10px]">
             <span className="flex items-center gap-1.5"><Skull className="w-4 h-4 text-red-500" /> DRAGON</span>
             <span className="flex items-center gap-1.5"><Gem className="w-4 h-4 text-blue-400" /> LOOT</span>
             <span className="flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-600" /> TRAPS</span>
