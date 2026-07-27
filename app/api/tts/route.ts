@@ -15,7 +15,7 @@ import { createClient } from '@/lib/supabase/server'
  *
  * Override at runtime via ELEVENLABS_VOICE_ID env var.
  */
-const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB' // Adam — free tier
+const DEFAULT_VOICE_ID = '6sFKzaJr574YWVu4UuJF'
 const MODEL_ID = 'eleven_multilingual_v2'
 
 export async function POST(request: Request) {
