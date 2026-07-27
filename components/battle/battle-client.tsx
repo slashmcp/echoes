@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { LairMap } from '@/components/map/lair-map'
 import { useBossVoice } from '@/hooks/use-boss-voice'
 import { useBattleController } from '@/hooks/use-battle-controller'
+import { soundManager } from '@/lib/audio/sound-manager'
 import type { DialogueEntry, GameSession, Profile } from '@/lib/game/types'
 
 interface BattleClientProps {
@@ -54,6 +55,33 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
   useEffect(() => {
     if (voice.status === 'idle') setSpeakingEntryId(null)
   }, [voice.status])
+
+  // Sync general volume settings with soundManager
+  useEffect(() => {
+    soundManager.setMute(!voiceEnabled)
+    if (voiceEnabled) {
+      soundManager.startAmbiance()
+    } else {
+      soundManager.stopAmbiance()
+    }
+    return () => {
+      soundManager.stopAmbiance()
+    }
+  }, [voiceEnabled])
+
+  // Message pop chime
+  useEffect(() => {
+    if (entries.length > 0) {
+      soundManager.playMessagePop()
+    }
+  }, [entries.length])
+
+  // Enraged state dragon roar
+  useEffect(() => {
+    if (bossState === 'enraged') {
+      soundManager.playDragonRoar()
+    }
+  }, [bossState])
 
   const triggerShake = useCallback(() => {
     setShake(true)
@@ -109,6 +137,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         setLastHit(data.judgement.damageToBoss)
         if (data.judgement.damageToBoss > 0 || data.judgement.damageToPlayer > 0) {
           triggerShake()
+          soundManager.playDamageImpact()
         }
 
         setSession(data.session)
@@ -118,6 +147,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         ])
 
         if (data.absorbedByShield > 0) {
+          soundManager.playShieldShatter()
           setEntries((prev) => [
             ...prev,
             {
@@ -170,6 +200,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       setLastHit(data.judgement.damageToBoss)
       if (data.judgement.damageToBoss > 0 || data.judgement.damageToPlayer > 0) {
         triggerShake()
+        soundManager.playDamageImpact()
       }
 
       setSession(data.session)
@@ -179,6 +210,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       ])
 
       if (data.absorbedByShield > 0) {
+        soundManager.playShieldShatter()
         setEntries((prev) => [
           ...prev,
           {

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { soundManager } from '@/lib/audio/sound-manager'
 
 interface AnswerInputProps {
   onSubmit: (message: string) => void
@@ -106,7 +107,10 @@ export function AnswerInput({ onSubmit, disabled, onStrike }: AnswerInputProps) 
           value={value}
           maxLength={600}
           disabled={disabled}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            setValue(event.target.value)
+            soundManager.playTypeClick()
+          }}
           onKeyDown={handleKeyDown}
           placeholder={
             disabled ? 'The duel has ended.' : 'Speak, morsel. Enter to answer, Shift+Enter for a new line.'

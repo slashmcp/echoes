@@ -14,7 +14,7 @@ interface ArenaSceneProps {
   wear: number
 }
 
-const EMBER_COUNT = 130
+const EMBER_COUNT = 350
 
 function Embers({ intensity }: { intensity: number }) {
   const points = useRef<THREE.Points>(null)
@@ -145,8 +145,8 @@ export function ArenaScene({ state, isSpeaking, wear }: ArenaSceneProps) {
 
   return (
     <>
-      <color attach="background" args={['#0b0908']} />
-      <fog attach="fog" args={['#0b0908', 9, 30]} />
+      <color attach="background" args={['#120503']} />
+      <fog attach="fog" args={['#120503', 3, 14]} />
 
       <ambientLight intensity={0.5} color="#ffffff" />
       <hemisphereLight args={['#222222', '#050505', 0.6]} />
