@@ -187,38 +187,36 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
       {/* Grid Map */}
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4">
         <div className="grid grid-cols-7 gap-1 border border-border/40 p-2 bg-black/60 rounded">
-          {Array.from({ length: GRID_SIZE }).map((_, y) => (
-            <div key={y} className="flex gap-1">
-              {Array.from({ length: GRID_SIZE }).map((_, x) => {
-                const cell = grid.find(c => c.x === x && c.y === y)
-                const isPlayer = playerPos.x === x && playerPos.y === y
-                const isRevealed = cell?.revealed
+          {Array.from({ length: GRID_SIZE }).map((_, y) => 
+            Array.from({ length: GRID_SIZE }).map((_, x) => {
+              const cell = grid.find(c => c.x === x && c.y === y)
+              const isPlayer = playerPos.x === x && playerPos.y === y
+              const isRevealed = cell?.revealed
 
-                return (
-                  <div
-                    key={x}
-                    className={cn(
-                      "size-8 rounded-sm flex items-center justify-center text-[10px] font-bold border transition-all duration-200",
-                      !isRevealed && "bg-black border-neutral-900 text-transparent",
-                      isRevealed && "bg-neutral-900 border-neutral-800 text-neutral-400",
-                      isPlayer && "bg-primary border-primary text-black shadow-[0_0_10px_oklch(0.7_0.2_45)] scale-105 z-10",
-                      isRevealed && cell?.hasItem === 'start' && "border-blue-500/50 text-blue-400",
-                      isRevealed && cell?.hasItem === 'shield' && "border-emerald-500/50 text-emerald-400 bg-emerald-950/20",
-                      isRevealed && cell?.hasItem === 'lava' && "border-red-500/50 text-red-400 bg-red-950/20",
-                      isRevealed && cell?.hasItem === 'boss' && "border-amber-500/50 text-amber-400 bg-amber-950/20 animate-pulse"
-                    )}
-                  >
-                    {isPlayer ? '👾' : isRevealed ? (
-                      cell?.hasItem === 'start' ? '🏁' :
-                      cell?.hasItem === 'shield' ? '🛡️' :
-                      cell?.hasItem === 'lava' ? '🌋' :
-                      cell?.hasItem === 'boss' ? '🐲' : '·'
-                    ) : ''}
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className={cn(
+                    "size-10 rounded-sm flex items-center justify-center text-sm font-bold border transition-all duration-200",
+                    !isRevealed && "bg-black border-neutral-900 text-transparent",
+                    isRevealed && "bg-neutral-900 border-neutral-800 text-neutral-400",
+                    isPlayer && "bg-primary border-primary text-black shadow-[0_0_10px_oklch(0.7_0.2_45)] scale-105 z-10",
+                    isRevealed && cell?.hasItem === 'start' && "border-blue-500/50 text-blue-400",
+                    isRevealed && cell?.hasItem === 'shield' && "border-emerald-500/50 text-emerald-400 bg-emerald-950/20",
+                    isRevealed && cell?.hasItem === 'lava' && "border-red-500/50 text-red-400 bg-red-950/20",
+                    isRevealed && cell?.hasItem === 'boss' && "border-amber-500/50 text-amber-400 bg-amber-950/20 animate-pulse"
+                  )}
+                >
+                  {isPlayer ? '👾' : isRevealed ? (
+                    cell?.hasItem === 'start' ? '🏁' :
+                    cell?.hasItem === 'shield' ? '🛡️' :
+                    cell?.hasItem === 'lava' ? '🌋' :
+                    cell?.hasItem === 'boss' ? '🐲' : '·'
+                  ) : ''}
+                </div>
+              )
+            })
+          )}
         </div>
 
         <p className="text-[10px] tracking-wider text-muted-foreground uppercase text-center max-w-xs leading-relaxed">
