@@ -1,6 +1,6 @@
 'use client'
 
-import { Map as MapIcon, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
+import { Map as MapIcon, X, User, Skull, Gem, Flame, Target } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -11,69 +11,62 @@ interface LairMapProps {
   onClose: () => void
 }
 
-type CellType = 'unexplored' | 'path' | 'wall' | 'start' | 'chest' | 'trap' | 'boss'
+type CellType = 'empty' | 'player' | 'dragon' | 'chest' | 'trap' | 'goal'
 
-interface MapCell {
-  x: number
-  y: number
-  type: CellType
-  revealed: boolean
-  hasItem?: 'shield' | 'lava' | 'start' | 'boss'
-  itemCollected?: boolean
+interface Tile {
+  x: number;
+  y: number;
+  type: CellType;
+  explored: boolean;
 }
 
-const GRID_SIZE = 7 // 7x7 grid
+const GRID_SIZE = 7
 
 export function LairMap({ bossHealth, onClose }: LairMapProps) {
-  const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 }) // Start at bottom middle
-  const [grid, setGrid] = useState<MapCell[]>([])
+  const [board, setBoard] = useState<Tile[]>([])
+  const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 })
 
-  // Initialize the grid on mount
+  // Initialize board state representing a 7x7 dark grid
   useEffect(() => {
-    const newGrid: MapCell[] = []
+    const tiles: Tile[] = []
     
-    // Seed positions of interest
+    // Seed locations matching the map layout template
+    const dragonPos = { x: 3, y: 0 }
+    const goalPos = { x: 3, y: 6 }
     const chestPositions = [
-      { x: 1, y: 2, item: 'shield' as const },
-      { x: 5, y: 3, item: 'shield' as const }
+      { x: 1, y: 2 },
+      { x: 5, y: 3 }
     ]
     const trapPositions = [
-      { x: 2, y: 4, item: 'lava' as const },
-      { x: 4, y: 2, item: 'lava' as const }
+      { x: 2, y: 4 },
+      { x: 4, y: 2 }
     ]
 
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
-        let type: CellType = 'unexplored'
-        let hasItem: MapCell['hasItem'] = undefined
+        let type: CellType = 'empty'
 
-        if (x === 3 && y === 6) {
-          type = 'start'
-          hasItem = 'start'
-        } else if (x === 3 && y === 0) {
-          type = 'boss'
-          hasItem = 'boss'
-        } else {
-          const chest = chestPositions.find(p => p.x === x && p.y === y)
-          if (chest) {
-            hasItem = 'shield'
-          }
-          const trap = trapPositions.find(p => p.x === x && p.y === y)
-          if (trap) {
-            hasItem = 'lava'
-          }
+        if (x === playerPos.x && y === playerPos.y) {
+          type = 'player'
+        } else if (x === dragonPos.x && y === dragonPos.y) {
+          type = 'dragon'
+        } else if (x === goalPos.x && y === goalPos.y) {
+          type = 'goal'
+        } else if (chestPositions.some(p => p.x === x && p.y === y)) {
+          type = 'chest'
+        } else if (trapPositions.some(p => p.x === x && p.y === y)) {
+          type = 'trap'
         }
 
-        newGrid.push({
+        tiles.push({
           x,
           y,
           type,
-          revealed: x === 3 && y === 6, // Reveal start position
-          hasItem
+          explored: x === playerPos.x && y === playerPos.y // Player's initial cell is explored
         })
       }
     }
-    setGrid(newGrid)
+    setBoard(tiles)
   }, [])
 
   function movePlayer(dx: number, dy: number) {
@@ -85,21 +78,39 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
     setPlayerPos({ x: nextX, y: nextY })
     soundManager.playTick()
 
-    // Reveal and check items
-    setGrid(prev => prev.map(cell => {
-      if (cell.x === nextX && cell.y === nextY) {
-        let nextCell = { ...cell, revealed: true }
-        
-        if (cell.hasItem === 'shield' && !cell.itemCollected) {
-          soundManager.playMessagePop() // play positive sound
-          nextCell.itemCollected = true
-        } else if (cell.hasItem === 'lava' && !cell.itemCollected) {
-          soundManager.playDamageImpact() // play hit sound
-          nextCell.itemCollected = true
-        }
-        return nextCell
+    // Move player and update explored status of cells
+    setBoard(prev => prev.map(tile => {
+      // 1. Clear player type from the old player tile
+      let nextType = tile.type
+      if (tile.x === playerPos.x && tile.y === playerPos.y) {
+        nextType = 'empty'
+        // Restore start/goal/etc tags if we moved away from them
+        if (tile.x === 3 && tile.y === 6) nextType = 'goal'
       }
-      return cell
+
+      // 2. Add player type to the new player tile, mark explored, trigger SFX
+      if (tile.x === nextX && tile.y === nextY) {
+        const wasExplored = tile.explored
+        
+        if (tile.type === 'chest' && !wasExplored) {
+          soundManager.playMessagePop()
+        } else if (tile.type === 'trap' && !wasExplored) {
+          soundManager.playDamageImpact()
+        } else if (tile.type === 'dragon' && !wasExplored) {
+          soundManager.playDragonRoar()
+        }
+
+        return {
+          ...tile,
+          type: 'player',
+          explored: true
+        }
+      }
+
+      return {
+        ...tile,
+        type: nextType
+      }
     }))
   }
 
@@ -122,9 +133,9 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [playerPos, grid])
+  }, [playerPos, board])
 
-  // Controller support
+  // Controller polling
   useEffect(() => {
     let active = true
     let cooldown = false
@@ -138,19 +149,19 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
         const x = gamepad.axes[0]
         const y = gamepad.axes[1]
 
-        if (y < -0.5) { // Up
+        if (y < -0.5) {
           movePlayer(0, -1)
           cooldown = true
           setTimeout(() => cooldown = false, 250)
-        } else if (y > 0.5) { // Down
+        } else if (y > 0.5) {
           movePlayer(0, 1)
           cooldown = true
           setTimeout(() => cooldown = false, 250)
-        } else if (x < -0.5) { // Left
+        } else if (x < -0.5) {
           movePlayer(-1, 0)
           cooldown = true
           setTimeout(() => cooldown = false, 250)
-        } else if (x > 0.5) { // Right
+        } else if (x > 0.5) {
           movePlayer(1, 0)
           cooldown = true
           setTimeout(() => cooldown = false, 250)
@@ -161,12 +172,39 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
 
     pollController()
     return () => { active = false }
-  }, [playerPos, grid])
+  }, [playerPos, board])
+
+  const renderIcon = (type: CellType, explored: boolean) => {
+    if (!explored) return null
+    switch (type) {
+      case 'player': 
+        return <User className="w-6 h-6 text-[#d97736] drop-shadow-[0_0_8px_rgba(217,119,54,0.8)]" />
+      case 'dragon': 
+        return <Skull className="w-6 h-6 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+      case 'chest': 
+        return <Gem className="w-5 h-5 text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+      case 'trap': 
+        return <Flame className="w-5 h-5 text-orange-600 drop-shadow-[0_0_6px_rgba(234,88,12,0.6)]" />
+      case 'goal': 
+        return <Target className="w-6 h-6 text-gray-400" />
+      default: 
+        return <div className="w-1.5 h-1.5 rounded-full bg-[#3a2015] opacity-50" />
+    }
+  }
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-between bg-black/95 p-6 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+      {/* CRT Scanline Overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none z-50 opacity-30" 
+        style={{
+          background: 'linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.25) 50%), linear-gradient(90deg, rgba(255,0,0,0.06), rgba(0,255,0,0.02), rgba(0,0,255,0.06))',
+          backgroundSize: '100% 4px, 3px 100%'
+        }}
+      />
+
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-border pb-4">
+      <header className="flex items-center justify-between border-b border-border/40 pb-4">
         <div className="flex items-center gap-2">
           <MapIcon className="size-4 text-primary" />
           <h2 className="font-serif text-xs font-bold tracking-[0.3em] text-primary uppercase">
@@ -185,47 +223,43 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
       </header>
 
       {/* Grid Map */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4">
-        <div className="grid grid-cols-7 gap-1 border border-border/40 p-2 bg-black/60 rounded">
-          {Array.from({ length: GRID_SIZE }).map((_, y) => 
-            Array.from({ length: GRID_SIZE }).map((_, x) => {
-              const cell = grid.find(c => c.x === x && c.y === y)
-              const isPlayer = playerPos.x === x && playerPos.y === y
-              const isRevealed = cell?.revealed
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 py-4">
+        <div className="relative border border-[#d97736]/30 bg-black/80 p-5 rounded-sm shadow-[0_0_30px_rgba(217,119,54,0.1)]">
+          <div className="grid grid-cols-7 gap-2">
+            {board.map((tile, idx) => {
+              const isPlayer = tile.type === 'player'
+              const isExplored = tile.explored
 
               return (
                 <div
-                  key={`${x}-${y}`}
+                  key={`${tile.x}-${tile.y}-${idx}`}
                   className={cn(
-                    "size-10 rounded-sm flex items-center justify-center text-sm font-bold border transition-all duration-200",
-                    !isRevealed && "bg-black border-neutral-900 text-transparent",
-                    isRevealed && "bg-neutral-900 border-neutral-800 text-neutral-400",
-                    isPlayer && "bg-primary border-primary text-black shadow-[0_0_10px_oklch(0.7_0.2_45)] scale-105 z-10",
-                    isRevealed && cell?.hasItem === 'start' && "border-blue-500/50 text-blue-400",
-                    isRevealed && cell?.hasItem === 'shield' && "border-emerald-500/50 text-emerald-400 bg-emerald-950/20",
-                    isRevealed && cell?.hasItem === 'lava' && "border-red-500/50 text-red-400 bg-red-950/20",
-                    isRevealed && cell?.hasItem === 'boss' && "border-amber-500/50 text-amber-400 bg-amber-950/20 animate-pulse"
+                    "w-12 h-12 flex items-center justify-center transition-all duration-300 rounded-sm border",
+                    isPlayer && "bg-[#d97736]/20 border-[#d97736] shadow-[0_0_15px_rgba(217,119,54,0.4)] animate-pulse",
+                    !isPlayer && isExplored && "border-[#d97736]/20 bg-[#1a0f0a]",
+                    !isExplored && "border-[#2a2a2a]/40 bg-black"
                   )}
                 >
-                  {isPlayer ? '👾' : isRevealed ? (
-                    cell?.hasItem === 'start' ? '🏁' :
-                    cell?.hasItem === 'shield' ? '🛡️' :
-                    cell?.hasItem === 'lava' ? '🌋' :
-                    cell?.hasItem === 'boss' ? '🐲' : '·'
-                  ) : ''}
+                  {renderIcon(tile.type, isExplored)}
                 </div>
               )
-            })
-          )}
+            })}
+          </div>
         </div>
 
-        <p className="text-[10px] tracking-wider text-muted-foreground uppercase text-center max-w-xs leading-relaxed">
-          Move using <kbd className="rounded bg-muted px-1 py-0.5 text-foreground">WASD</kbd> or <kbd className="rounded bg-muted px-1 py-0.5 text-foreground">D-Pad</kbd> in the dark. Find the dragon 🐲 or loot chests 🛡️, avoid traps 🌋.
-        </p>
+        {/* Legend / Instructions */}
+        <div className="text-center text-[#a89f91] font-mono text-xs tracking-widest leading-relaxed max-w-md">
+          <p>MOVE USING <kbd className="text-white bg-neutral-800 px-1.5 py-0.5 rounded">WASD</kbd> OR <kbd className="text-white bg-neutral-800 px-1.5 py-0.5 rounded">D-PAD</kbd> IN THE DARK.</p>
+          <p className="mt-3 flex items-center justify-center gap-4 text-[10px]">
+            <span className="flex items-center gap-1.5"><Skull className="w-4 h-4 text-red-500" /> DRAGON</span>
+            <span className="flex items-center gap-1.5"><Gem className="w-4 h-4 text-blue-400" /> LOOT</span>
+            <span className="flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-600" /> TRAPS</span>
+          </p>
+        </div>
       </div>
 
       {/* Footer Instructions */}
-      <footer className="border-t border-border pt-4 text-center">
+      <footer className="border-t border-border/40 pt-4 text-center">
         <p className="font-serif text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
           Press <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Start</kbd> or <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Esc</kbd> to return to the arena
         </p>
