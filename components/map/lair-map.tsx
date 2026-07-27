@@ -1,50 +1,167 @@
 'use client'
 
-import { Map as MapIcon, X } from 'lucide-react'
+import { Map as MapIcon, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { soundManager } from '@/lib/audio/sound-manager'
 
 interface LairMapProps {
   bossHealth: number
   onClose: () => void
 }
 
-const MAP_LOCATIONS = [
-  {
-    name: 'Village Gate',
-    description: 'The ash-choked lowlands where the climb begins.',
-    healthThreshold: 500, // 0-100 dmg dealt
-  },
-  {
-    name: 'Ashen Pass',
-    description: 'Narrow ledges swept by freezing winds and falling rock.',
-    healthThreshold: 400, // 100-200 dmg dealt
-  },
-  {
-    name: 'Dragon Gate',
-    description: 'An ancient basalt archway carved with warnings.',
-    healthThreshold: 300, // 200-300 dmg dealt
-  },
-  {
-    name: 'The Outer Hall',
-    description: 'Where the skeletal hoard of past challangers rests.',
-    healthThreshold: 150, // 300-450 dmg dealt
-  },
-  {
-    name: 'Ignis\'s Throne',
-    description: 'The ancient molten chamber at the volcano core.',
-    healthThreshold: 0, // Current/Final fight
-  },
-]
+type CellType = 'unexplored' | 'path' | 'wall' | 'start' | 'chest' | 'trap' | 'boss'
+
+interface MapCell {
+  x: number
+  y: number
+  type: CellType
+  revealed: boolean
+  hasItem?: 'shield' | 'lava' | 'start' | 'boss'
+  itemCollected?: boolean
+}
+
+const GRID_SIZE = 7 // 7x7 grid
 
 export function LairMap({ bossHealth, onClose }: LairMapProps) {
-  // Determine current active location index based on boss health remaining
-  let activeIndex = 0
-  for (let i = MAP_LOCATIONS.length - 1; i >= 0; i--) {
-    if (bossHealth <= MAP_LOCATIONS[i].healthThreshold) {
-      activeIndex = i
+  const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 }) // Start at bottom middle
+  const [grid, setGrid] = useState<MapCell[]>([])
+
+  // Initialize the grid on mount
+  useEffect(() => {
+    const newGrid: MapCell[] = []
+    
+    // Seed positions of interest
+    const chestPositions = [
+      { x: 1, y: 2, item: 'shield' as const },
+      { x: 5, y: 3, item: 'shield' as const }
+    ]
+    const trapPositions = [
+      { x: 2, y: 4, item: 'lava' as const },
+      { x: 4, y: 2, item: 'lava' as const }
+    ]
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        let type: CellType = 'unexplored'
+        let hasItem: MapCell['hasItem'] = undefined
+
+        if (x === 3 && y === 6) {
+          type = 'start'
+          hasItem = 'start'
+        } else if (x === 3 && y === 0) {
+          type = 'boss'
+          hasItem = 'boss'
+        } else {
+          const chest = chestPositions.find(p => p.x === x && p.y === y)
+          if (chest) {
+            hasItem = 'shield'
+          }
+          const trap = trapPositions.find(p => p.x === x && p.y === y)
+          if (trap) {
+            hasItem = 'lava'
+          }
+        }
+
+        newGrid.push({
+          x,
+          y,
+          type,
+          revealed: x === 3 && y === 6, // Reveal start position
+          hasItem
+        })
+      }
     }
+    setGrid(newGrid)
+  }, [])
+
+  function movePlayer(dx: number, dy: number) {
+    const nextX = Math.max(0, Math.min(GRID_SIZE - 1, playerPos.x + dx))
+    const nextY = Math.max(0, Math.min(GRID_SIZE - 1, playerPos.y + dy))
+
+    if (nextX === playerPos.x && nextY === playerPos.y) return
+
+    setPlayerPos({ x: nextX, y: nextY })
+    soundManager.playTick()
+
+    // Reveal and check items
+    setGrid(prev => prev.map(cell => {
+      if (cell.x === nextX && cell.y === nextY) {
+        let nextCell = { ...cell, revealed: true }
+        
+        if (cell.hasItem === 'shield' && !cell.itemCollected) {
+          soundManager.playMessagePop() // play positive sound
+          nextCell.itemCollected = true
+        } else if (cell.hasItem === 'lava' && !cell.itemCollected) {
+          soundManager.playDamageImpact() // play hit sound
+          nextCell.itemCollected = true
+        }
+        return nextCell
+      }
+      return cell
+    }))
   }
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        movePlayer(0, -1)
+      } else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        movePlayer(0, 1)
+      } else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        movePlayer(-1, 0)
+      } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        movePlayer(1, 0)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [playerPos, grid])
+
+  // Controller support
+  useEffect(() => {
+    let active = true
+    let cooldown = false
+
+    function pollController() {
+      if (!active) return
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
+      const gamepad = Array.from(gamepads).find(g => g !== null)
+      
+      if (gamepad && gamepad.axes && !cooldown) {
+        const x = gamepad.axes[0]
+        const y = gamepad.axes[1]
+
+        if (y < -0.5) { // Up
+          movePlayer(0, -1)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (y > 0.5) { // Down
+          movePlayer(0, 1)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (x < -0.5) { // Left
+          movePlayer(-1, 0)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (x > 0.5) { // Right
+          movePlayer(1, 0)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        }
+      }
+      requestAnimationFrame(pollController)
+    }
+
+    pollController()
+    return () => { active = false }
+  }, [playerPos, grid])
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-between bg-black/95 p-6 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
@@ -53,7 +170,7 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
         <div className="flex items-center gap-2">
           <MapIcon className="size-4 text-primary" />
           <h2 className="font-serif text-xs font-bold tracking-[0.3em] text-primary uppercase">
-            Ignis's Lair map
+            Darkness Exploration
           </h2>
         </div>
         <Button
@@ -67,58 +184,46 @@ export function LairMap({ bossHealth, onClose }: LairMapProps) {
         </Button>
       </header>
 
-      {/* Silhouette Mountain Landscape */}
-      <div className="relative flex flex-1 items-center justify-center py-10">
-        {/* Mountain landscape background */}
-        <div className="absolute inset-x-0 bottom-10 h-32 opacity-20 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-primary/30 via-transparent to-transparent" />
-        
-        {/* The Path Line */}
-        <div className="absolute inset-x-12 h-1 bg-gradient-to-r from-muted-foreground/20 via-primary/40 to-primary/20" />
+      {/* Grid Map */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4">
+        <div className="grid grid-cols-7 gap-1 border border-border/40 p-2 bg-black/60 rounded">
+          {Array.from({ length: GRID_SIZE }).map((_, y) => (
+            <div key={y} className="flex gap-1">
+              {Array.from({ length: GRID_SIZE }).map((_, x) => {
+                const cell = grid.find(c => c.x === x && c.y === y)
+                const isPlayer = playerPos.x === x && playerPos.y === y
+                const isRevealed = cell?.revealed
 
-        {/* Path dots */}
-        <div className="relative flex w-full justify-between px-12">
-          {MAP_LOCATIONS.map((loc, idx) => {
-            const isCompleted = idx < activeIndex
-            const isActive = idx === activeIndex
-            const isFuture = idx > activeIndex
-
-            return (
-              <div key={loc.name} className="flex flex-col items-center gap-4 relative group">
-                {/* Visual Point */}
-                <div
-                  className={cn(
-                    "relative z-10 flex size-8 items-center justify-center rounded-full border-2 transition-all duration-300",
-                    isCompleted && "bg-muted text-muted-foreground border-muted-foreground/30",
-                    isActive && "bg-primary border-primary text-black shadow-[0_0_15px_oklch(0.7_0.2_45)] scale-110",
-                    isFuture && "bg-black border-border text-muted-foreground/40"
-                  )}
-                >
-                  <span className="font-serif text-[10px] font-bold">{idx + 1}</span>
-                  {isActive && (
-                    <span className="absolute -inset-1 animate-ping rounded-full border-2 border-primary opacity-50" />
-                  )}
-                </div>
-
-                {/* Info Text */}
-                <div className="absolute top-12 flex w-36 flex-col items-center text-center">
-                  <h3
+                return (
+                  <div
+                    key={x}
                     className={cn(
-                      "font-serif text-[10px] font-bold tracking-widest uppercase transition-colors",
-                      isActive ? "text-primary" : "text-muted-foreground/60"
+                      "size-8 rounded-sm flex items-center justify-center text-[10px] font-bold border transition-all duration-200",
+                      !isRevealed && "bg-black border-neutral-900 text-transparent",
+                      isRevealed && "bg-neutral-900 border-neutral-800 text-neutral-400",
+                      isPlayer && "bg-primary border-primary text-black shadow-[0_0_10px_oklch(0.7_0.2_45)] scale-105 z-10",
+                      isRevealed && cell?.hasItem === 'start' && "border-blue-500/50 text-blue-400",
+                      isRevealed && cell?.hasItem === 'shield' && "border-emerald-500/50 text-emerald-400 bg-emerald-950/20",
+                      isRevealed && cell?.hasItem === 'lava' && "border-red-500/50 text-red-400 bg-red-950/20",
+                      isRevealed && cell?.hasItem === 'boss' && "border-amber-500/50 text-amber-400 bg-amber-950/20 animate-pulse"
                     )}
                   >
-                    {loc.name}
-                  </h3>
-                  {isActive && (
-                    <p className="mt-1.5 text-[9px] leading-normal text-muted-foreground/80 animate-in fade-in slide-in-from-top-1 duration-300">
-                      {loc.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+                    {isPlayer ? '👾' : isRevealed ? (
+                      cell?.hasItem === 'start' ? '🏁' :
+                      cell?.hasItem === 'shield' ? '🛡️' :
+                      cell?.hasItem === 'lava' ? '🌋' :
+                      cell?.hasItem === 'boss' ? '🐲' : '·'
+                    ) : ''}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
         </div>
+
+        <p className="text-[10px] tracking-wider text-muted-foreground uppercase text-center max-w-xs leading-relaxed">
+          Move using <kbd className="rounded bg-muted px-1 py-0.5 text-foreground">WASD</kbd> or <kbd className="rounded bg-muted px-1 py-0.5 text-foreground">D-Pad</kbd> in the dark. Find the dragon 🐲 or loot chests 🛡️, avoid traps 🌋.
+        </p>
       </div>
 
       {/* Footer Instructions */}

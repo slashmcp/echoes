@@ -89,22 +89,7 @@ export function IgnisDragon({ state, isSpeaking, wear }: IgnisDragonProps) {
       group.current.rotation.z = THREE.MathUtils.lerp(group.current.rotation.z, targetRotZ, 0.08)
     }
 
-    // Throb / speaking animation
-    if (dragonMesh && dragonMesh.material) {
-      const materials = Array.isArray(dragonMesh.material)
-        ? dragonMesh.material
-        : [dragonMesh.material]
-
-      materials.forEach((mat) => {
-        if (mat instanceof THREE.MeshStandardMaterial) {
-          const speakThrob = isSpeaking ? 1.3 + Math.abs(Math.sin(t * 11)) * 0.45 : 1.0
-          const rageThrob = state === 'enraged' ? 1 + Math.sin(t * 9) * 0.3 : 1
-          
-          mat.emissive = new THREE.Color(palette.emissiveColor)
-          mat.emissiveIntensity = palette.emissiveIntensity * speakThrob * rageThrob
-        }
-      })
-    }
+    // Emissive and texture overrides removed to preserve the model's native materials and red scale textures.
   })
 
   return (
