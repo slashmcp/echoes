@@ -14,6 +14,7 @@ interface ArenaViewportProps {
   isSpeaking: boolean
   bossHealth: number
   shake: boolean
+  showMap: boolean
   className?: string
 }
 
@@ -22,6 +23,7 @@ export function ArenaViewport({
   isSpeaking,
   bossHealth,
   shake,
+  showMap,
   className,
 }: ArenaViewportProps) {
   const wear = 1 - Math.max(0, Math.min(1, bossHealth / MAX_BOSS_HEALTH))
@@ -41,7 +43,7 @@ export function ArenaViewport({
         shadows
       >
         <Suspense fallback={null}>
-          <ArenaScene state={state} isSpeaking={isSpeaking} wear={wear} />
+          <ArenaScene state={state} isSpeaking={isSpeaking} wear={wear} showMap={showMap} />
         </Suspense>
         <OrbitControls 
           enableZoom={true} 

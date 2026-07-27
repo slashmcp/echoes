@@ -1,20 +1,295 @@
 'use client'
 
 import { useFrame } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 import { STATE_META } from '@/lib/game/content'
 import type { BossState } from '@/lib/game/types'
 import { IgnisDragon } from './ignis-dragon'
+import { soundManager } from '@/lib/audio/sound-manager'
 
 interface ArenaSceneProps {
   state: BossState
   isSpeaking: boolean
   wear: number
+  showMap: boolean
 }
 
 const EMBER_COUNT = 350
+const GRID_SIZE = 7
+
+// Types for 3D Board
+type CellType = 'empty' | 'player' | 'dragon' | 'chest' | 'trap' | 'goal'
+interface Tile3D {
+  x: number
+  y: number
+  type: CellType
+  explored: boolean
+}
+
+// 3D Playable Board Component
+function PlayableBoard3D() {
+  const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 })
+  const [grid, setGrid] = useState<Tile3D[]>([])
+
+  // Initialize board state representing a 7x7 dark grid
+  useEffect(() => {
+    const tiles: Tile3D[] = []
+    const dragonPos = { x: 3, y: 0 }
+    const goalPos = { x: 3, y: 6 }
+    const chestPositions = [
+      { x: 1, y: 2 },
+      { x: 5, y: 3 }
+    ]
+    const trapPositions = [
+      { x: 2, y: 4 },
+      { x: 4, y: 2 }
+    ]
+
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        let type: CellType = 'empty'
+
+        if (x === playerPos.x && y === playerPos.y) {
+          type = 'player'
+        } else if (x === dragonPos.x && y === dragonPos.y) {
+          type = 'dragon'
+        } else if (x === goalPos.x && y === goalPos.y) {
+          type = 'goal'
+        } else if (chestPositions.some(p => p.x === x && p.y === y)) {
+          type = 'chest'
+        } else if (trapPositions.some(p => p.x === x && p.y === y)) {
+          type = 'trap'
+        }
+
+        tiles.push({
+          x,
+          y,
+          type,
+          explored: x === playerPos.x && y === playerPos.y
+        })
+      }
+    }
+    setGrid(tiles)
+  }, [])
+
+  function movePlayer(dx: number, dy: number) {
+    const nextX = Math.max(0, Math.min(GRID_SIZE - 1, playerPos.x + dx))
+    const nextY = Math.max(0, Math.min(GRID_SIZE - 1, playerPos.y + dy))
+
+    if (nextX === playerPos.x && nextY === playerPos.y) return
+
+    setPlayerPos({ x: nextX, y: nextY })
+    soundManager.playTick()
+
+    // Move player and update explored status of cells
+    setGrid(prev => prev.map(tile => {
+      let nextType = tile.type
+      if (tile.x === playerPos.x && tile.y === playerPos.y) {
+        nextType = 'empty'
+        if (tile.x === 3 && tile.y === 6) nextType = 'goal'
+      }
+
+      if (tile.x === nextX && tile.y === nextY) {
+        const wasExplored = tile.explored
+        
+        if (tile.type === 'chest' && !wasExplored) {
+          soundManager.playMessagePop()
+        } else if (tile.type === 'trap' && !wasExplored) {
+          soundManager.playDamageImpact()
+        } else if (tile.type === 'dragon' && !wasExplored) {
+          soundManager.playDragonRoar()
+        }
+
+        return {
+          ...tile,
+          type: 'player',
+          explored: true
+        }
+      }
+
+      return {
+        ...tile,
+        type: nextType
+      }
+    }))
+  }
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        movePlayer(0, -1)
+      } else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        movePlayer(0, 1)
+      } else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        movePlayer(-1, 0)
+      } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        movePlayer(1, 0)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [playerPos, grid])
+
+  // Controller polling
+  useEffect(() => {
+    let active = true
+    let cooldown = false
+
+    function pollController() {
+      if (!active) return
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
+      const gamepad = Array.from(gamepads).find(g => g !== null)
+      
+      if (gamepad && gamepad.axes && !cooldown) {
+        const x = gamepad.axes[0]
+        const y = gamepad.axes[1]
+
+        if (y < -0.5) {
+          movePlayer(0, -1)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (y > 0.5) {
+          movePlayer(0, 1)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (x < -0.5) {
+          movePlayer(-1, 0)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        } else if (x > 0.5) {
+          movePlayer(1, 0)
+          cooldown = true
+          setTimeout(() => cooldown = false, 250)
+        }
+      }
+      requestAnimationFrame(pollController)
+    }
+
+    pollController()
+    return () => { active = false }
+  }, [playerPos, grid])
+
+  return (
+    <group position={[0, -0.2, 0]} rotation={[0.12, 0, 0]}>
+      {/* 3D Board Base Tabletop */}
+      <mesh receiveShadow position={[0, -0.92, 0]}>
+        <boxGeometry args={[4.8, 0.08, 4.8]} />
+        <meshStandardMaterial color="#1a120c" roughness={0.95} metalness={0.05} />
+      </mesh>
+
+      {/* Render 49 cells in 3D */}
+      {grid.map((tile, idx) => {
+        const localX = (tile.x - 3) * 0.62
+        const localZ = (tile.y - 3) * 0.62
+        const isPlayer = tile.type === 'player'
+        const isExplored = tile.explored
+
+        return (
+          <group key={`${tile.x}-${tile.y}-${idx}`}>
+            {/* Basalt stone slab tile */}
+            <mesh 
+              receiveShadow 
+              castShadow 
+              position={[localX, -0.87, localZ]}
+            >
+              <boxGeometry args={[0.56, 0.06, 0.56]} />
+              <meshStandardMaterial 
+                color={isExplored ? (isPlayer ? "#2f1d14" : "#1a0f0a") : "#060403"} 
+                roughness={0.9} 
+                metalness={0.1}
+                emissive={isPlayer ? "#d97736" : "#000000"}
+                emissiveIntensity={isPlayer ? 0.05 : 0}
+              />
+            </mesh>
+
+            {/* Fog of War (Unexplored black smoke column) */}
+            {!isExplored && (
+              <mesh position={[localX, -0.5, localZ]}>
+                <boxGeometry args={[0.55, 0.7, 0.55]} />
+                <meshStandardMaterial 
+                  color="#000000" 
+                  transparent 
+                  opacity={0.92}
+                  roughness={1.0}
+                />
+              </mesh>
+            )}
+
+            {/* Explorations tokens */}
+            {isExplored && (
+              <group position={[localX, -0.84, localZ]}>
+                {/* Player Token: Bouncing copper chess-pawn */}
+                {isPlayer && (
+                  <mesh castShadow position={[0, 0.22, 0]}>
+                    <coneGeometry args={[0.18, 0.38, 8]} />
+                    <meshStandardMaterial 
+                      color="#d97736" 
+                      metalness={0.8} 
+                      roughness={0.2}
+                      emissive="#d97736"
+                      emissiveIntensity={0.25}
+                    />
+                  </mesh>
+                )}
+
+                {/* Dragon Goal Token: Glowing red skull */}
+                {tile.type === 'dragon' && (
+                  <mesh castShadow position={[0, 0.16, 0]}>
+                    <sphereGeometry args={[0.16, 8, 8]} />
+                    <meshStandardMaterial 
+                      color="#ef4444" 
+                      emissive="#ef4444" 
+                      emissiveIntensity={0.7}
+                    />
+                  </mesh>
+                )}
+
+                {/* Chest Token: Glowing blue gem */}
+                {tile.type === 'chest' && (
+                  <mesh castShadow position={[0, 0.14, 0]}>
+                    <octahedronGeometry args={[0.12]} />
+                    <meshStandardMaterial 
+                      color="#60a5fa" 
+                      emissive="#60a5fa" 
+                      emissiveIntensity={0.65}
+                    />
+                  </mesh>
+                )}
+
+                {/* Trap Token: Lava warning geyser */}
+                {tile.type === 'trap' && (
+                  <mesh castShadow position={[0, 0.1, 0]}>
+                    <cylinderGeometry args={[0.12, 0.18, 0.2, 6]} />
+                    <meshStandardMaterial 
+                      color="#ea580c" 
+                      emissive="#ea580c" 
+                      emissiveIntensity={0.8}
+                    />
+                  </mesh>
+                )}
+
+                {/* Goal Token: Start Flag/Marker */}
+                {tile.type === 'goal' && (
+                  <mesh castShadow position={[0, 0.12, 0]}>
+                    <cylinderGeometry args={[0.08, 0.08, 0.24, 8]} />
+                    <meshStandardMaterial color="#888888" roughness={0.7} />
+                  </mesh>
+                )}
+              </group>
+            )}
+          </group>
+        )
+      })}
+    </group>
+  )
+}
 
 function Embers({ intensity }: { intensity: number }) {
   const points = useRef<THREE.Points>(null)
@@ -50,88 +325,71 @@ function Embers({ intensity }: { intensity: number }) {
   return (
     <points ref={points}>
       <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
       </bufferGeometry>
       <pointsMaterial
-        color="#ff8a2b"
-        size={0.075}
-        sizeAttenuation
+        size={0.065}
+        color="#ff6611"
         transparent
-        opacity={Math.min(0.35 + intensity * 0.3, 0.95)}
-        depthWrite={false}
+        opacity={0.85}
         blending={THREE.AdditiveBlending}
+        depthWrite={false}
       />
     </points>
   )
 }
 
-/** The lava fissure beneath the dragon, pulsing with his temper. */
-function LavaFloor({ intensity }: { intensity: number }) {
-  const light = useRef<THREE.PointLight>(null)
-
-  useFrame((frameState) => {
-    if (!light.current) return
-    const t = frameState.clock.elapsedTime
-    light.current.intensity =
-      (12 + intensity * 26) * (0.85 + Math.sin(t * 2.1) * 0.1 + Math.sin(t * 5.7) * 0.05)
+function Pillars() {
+  const material = new THREE.MeshStandardMaterial({
+    color: '#080504',
+    roughness: 0.95,
   })
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.6, 0]} receiveShadow>
-        <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#100c0a" roughness={0.95} metalness={0.1} />
+      <mesh material={material} position={[-4, 2, -6]}>
+        <cylinderGeometry args={[0.3, 0.45, 12, 6]} />
       </mesh>
-
-      {/* Molten cracks radiating outward */}
-      {[
-        [0, -2.58, 2.4, 9, 0.42],
-        [-3.2, -2.57, -0.6, 6, 0.24],
-        [3.6, -2.57, -1.4, 7, 0.2],
-      ].map(([x, y, z, len, w], i) => (
-        <mesh
-          key={`crack-${i}`}
-          rotation={[-Math.PI / 2, 0, i * 0.7]}
-          position={[x, y, z]}
-        >
-          <planeGeometry args={[w, len]} />
-          <meshStandardMaterial
-            color="#ff5512"
-            emissive="#ff6a1c"
-            emissiveIntensity={1.2 + intensity}
-            toneMapped={false}
-          />
-        </mesh>
-      ))}
-
-      <pointLight ref={light} position={[0, -1.9, 1.5]} color="#ff5a14" distance={30} />
+      <mesh material={material} position={[4, 2, -6]}>
+        <cylinderGeometry args={[0.3, 0.45, 12, 6]} />
+      </mesh>
+      <mesh material={material} position={[-7, 2, -2]}>
+        <cylinderGeometry args={[0.4, 0.6, 12, 6]} />
+      </mesh>
+      <mesh material={material} position={[7, 2, -2]}>
+        <cylinderGeometry args={[0.4, 0.6, 12, 6]} />
+      </mesh>
     </group>
   )
 }
 
-/** Obsidian pillars framing the hall. */
-function Pillars() {
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color('#14100e'),
-        roughness: 0.88,
-        metalness: 0.2,
-      }),
-    [],
-  )
+function LavaFloor({ intensity }: { intensity: number }) {
+  const material = new THREE.MeshStandardMaterial({
+    color: '#0d0402',
+    roughness: 0.95,
+  })
 
   return (
     <group>
-      {[-7.5, -5.2, 5.2, 7.5].map((x, i) => (
-        <mesh
-          key={`pillar-${x}`}
-          material={material}
-          position={[x, 2 - i * 0.2, -4.5 - Math.abs(x) * 0.2]}
-        >
-          <cylinderGeometry args={[0.65, 0.9, 14, 7]} />
-        </mesh>
-      ))}
+      {/* Basalt stone floor */}
+      <mesh material={material} position={[0, -2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[46, 36]} />
+      </mesh>
+
+      {/* Lava fissure split in center */}
+      <mesh position={[0, -1.98, -1.8]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[2.2, 14]} />
+        <meshStandardMaterial
+          color="#ff4400"
+          emissive="#ff4400"
+          emissiveIntensity={intensity * 4.5 + 1.2}
+          roughness={0.9}
+        />
+      </mesh>
+
       {/* Back wall */}
       <mesh material={material} position={[0, 3, -11]}>
         <planeGeometry args={[46, 26]} />
@@ -140,7 +398,7 @@ function Pillars() {
   )
 }
 
-export function ArenaScene({ state, isSpeaking, wear }: ArenaSceneProps) {
+export function ArenaScene({ state, isSpeaking, wear, showMap }: ArenaSceneProps) {
   const intensity = STATE_META[state].glow
 
   return (
@@ -164,10 +422,18 @@ export function ArenaScene({ state, isSpeaking, wear }: ArenaSceneProps) {
       />
       <pointLight position={[-8, 4, 4]} intensity={3} color="#ff3b00" distance={22} />
 
-      <Pillars />
-      <LavaFloor intensity={intensity} />
-      <Embers intensity={intensity} />
-      <IgnisDragon state={state} isSpeaking={isSpeaking} wear={wear} />
+      {showMap ? (
+        // Render 3D board instead of the normal boss scene
+        <PlayableBoard3D />
+      ) : (
+        // Normal Boss duel scene
+        <>
+          <Pillars />
+          <LavaFloor intensity={intensity} />
+          <Embers intensity={intensity} />
+          <IgnisDragon state={state} isSpeaking={isSpeaking} wear={wear} />
+        </>
+      )}
     </>
   )
 }

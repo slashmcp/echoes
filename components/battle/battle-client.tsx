@@ -302,6 +302,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           isSpeaking={voice.isSpeaking}
           bossHealth={session?.bossHealth ?? 500}
           shake={shake}
+          showMap={showMap}
           className="absolute inset-0 h-full w-full"
         />
 
@@ -339,14 +340,6 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
             isStarting={isStarting}
             isAnonymous={isAnonymous || !hasUser}
             onStart={startDuel}
-          />
-        )}
-
-        {/* Lair Map Overlay */}
-        {showMap && (
-          <LairMap
-            bossHealth={session?.bossHealth ?? 500}
-            onClose={() => setShowMap(false)}
           />
         )}
       </section>
