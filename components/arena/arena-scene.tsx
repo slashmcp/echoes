@@ -1,6 +1,7 @@
 'use client'
 
 import { useFrame } from '@react-three/fiber'
+import { useTexture } from '@react-three/drei'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
@@ -30,6 +31,7 @@ interface Tile3D {
 
 // 3D Playable Board Component
 function PlayableBoard3D() {
+  const floorTexture = useTexture('/Untitled design.png')
   const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 })
   const [grid, setGrid] = useState<Tile3D[]>([])
 
@@ -193,7 +195,7 @@ function PlayableBoard3D() {
 
         return (
           <group key={`${tile.x}-${tile.y}-${idx}`}>
-            {/* Basalt stone slab tile */}
+            {/* Basalt stone slab tile with custom texture map */}
             <mesh 
               receiveShadow 
               castShadow 
@@ -201,11 +203,12 @@ function PlayableBoard3D() {
             >
               <boxGeometry args={[0.56, 0.06, 0.56]} />
               <meshStandardMaterial 
-                color={isExplored ? (isPlayer ? "#2f1d14" : "#1a0f0a") : "#060403"} 
-                roughness={0.9} 
-                metalness={0.1}
+                map={floorTexture}
+                color={isExplored ? (isPlayer ? "#ffa466" : "#ffffff") : "#22110c"} 
+                roughness={0.65} 
+                metalness={0.25}
                 emissive={isPlayer ? "#d97736" : "#000000"}
-                emissiveIntensity={isPlayer ? 0.05 : 0}
+                emissiveIntensity={isPlayer ? 0.25 : 0}
               />
             </mesh>
 
