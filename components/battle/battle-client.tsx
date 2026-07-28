@@ -34,7 +34,11 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
   const [shake, setShake] = useState(false)
   const [lastHit, setLastHit] = useState(0)
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
-  const [showMap, setShowMap] = useState(false)
+  const [showMap, setShowMap] = useState(true)
+
+  const handleEncounterDragon = useCallback(() => {
+    setShowMap(false)
+  }, [])
 
   const voice = useBossVoice(voiceEnabled)
   const spokenIds = useRef<Set<string>>(new Set())
@@ -303,6 +307,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           bossHealth={session?.bossHealth ?? 500}
           shake={shake}
           showMap={showMap}
+          onEncounterDragon={handleEncounterDragon}
           className="absolute inset-0 h-full w-full"
         />
 

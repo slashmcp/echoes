@@ -30,7 +30,7 @@ interface Tile3D {
 }
 
 // 3D Playable Board Component
-function PlayableBoard3D() {
+function PlayableBoard3D({ onEncounter }: { onEncounter?: () => void }) {
   const floorTexture = useTexture('/Untitled design.png')
   const [playerPos, setPlayerPos] = useState({ x: 3, y: 6 })
   const [grid, setGrid] = useState<Tile3D[]>([])
@@ -84,6 +84,13 @@ function PlayableBoard3D() {
 
     setPlayerPos({ x: nextX, y: nextY })
     soundManager.playTick()
+
+    // Trigger encounter if next position is the dragon
+    if (nextX === 3 && nextY === 0) {
+      if (onEncounter) {
+        onEncounter()
+      }
+    }
 
     // Move player and update explored status of cells
     setGrid(prev => prev.map(tile => {
@@ -401,7 +408,7 @@ function LavaFloor({ intensity }: { intensity: number }) {
   )
 }
 
-export function ArenaScene({ state, isSpeaking, wear, showMap }: ArenaSceneProps) {
+export function ArenaScene({ state, isSpeaking, wear, showMap, onEncounterDragon }: ArenaSceneProps & { onEncounterDragon?: () => void }) {
   const intensity = STATE_META[state].glow
 
   return (
@@ -411,8 +418,8 @@ export function ArenaScene({ state, isSpeaking, wear, showMap }: ArenaSceneProps
 
       <ambientLight intensity={0.5} color="#ffffff" />
       <hemisphereLight args={['#222222', '#050505', 0.6]} />
-      {/* Front light to illuminate the model textures */}
-      <directionalLight position={[0, 4, 10]} intensity={2.8} color="#ffffff" />
+      {/* Front light to illuminate the model textures without bleaching them */}
+      <directionalLight position={[0, 4, 10]} intensity={0.85} color="#ffffff" />
       
       {/* Key light from the fissure below — classic villain uplighting */}
       <spotLight
@@ -427,7 +434,7 @@ export function ArenaScene({ state, isSpeaking, wear, showMap }: ArenaSceneProps
 
       {showMap ? (
         // Render 3D board instead of the normal boss scene
-        <PlayableBoard3D />
+        <PlayableBoard3D onEncounter={onEncounterDragon} />
       ) : (
         // Normal Boss duel scene
         <>

@@ -15,6 +15,7 @@ interface ArenaViewportProps {
   bossHealth: number
   shake: boolean
   showMap: boolean
+  onEncounterDragon?: () => void
   className?: string
 }
 
@@ -24,6 +25,7 @@ export function ArenaViewport({
   bossHealth,
   shake,
   showMap,
+  onEncounterDragon,
   className,
 }: ArenaViewportProps) {
   const wear = 1 - Math.max(0, Math.min(1, bossHealth / MAX_BOSS_HEALTH))
@@ -43,7 +45,13 @@ export function ArenaViewport({
         shadows
       >
         <Suspense fallback={null}>
-          <ArenaScene state={state} isSpeaking={isSpeaking} wear={wear} showMap={showMap} />
+          <ArenaScene 
+            state={state} 
+            isSpeaking={isSpeaking} 
+            wear={wear} 
+            showMap={showMap} 
+            onEncounterDragon={onEncounterDragon}
+          />
         </Suspense>
         <OrbitControls 
           enableZoom={true} 
