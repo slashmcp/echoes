@@ -25,8 +25,21 @@ export function Warrior({ position = [0, -2, 12], rotation = [0, Math.PI, 0], sc
   useEffect(() => {
     scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
-        child.castShadow = true
-        child.receiveShadow = true
+        const mesh = child as THREE.Mesh
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        
+        // Fix for "dark" model caused by the KHR_materials_pbrSpecularGlossiness error:
+        // We override the broken material with a standard one, preserving the texture if it loaded.
+        const oldMat = mesh.material as any
+        const textureMap = oldMat?.map || null
+        
+        mesh.material = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          map: textureMap,
+          roughness: 0.6,
+          metalness: 0.1
+        })
       }
     })
   }, [scene])
@@ -57,9 +70,9 @@ export function Warrior({ position = [0, -2, 12], rotation = [0, Math.PI, 0], sc
     forward.y = 0
     if (forward.lengthSq() > 0.001) forward.normalize()
 
-    // Place the warrior 8 units in front of the camera (further away so he's easier to see)
-    const targetPos = camera.position.clone().add(forward.clone().multiplyScalar(8))
-    targetPos.y = -2.5 // lock to ground, slightly lower to center in view
+    // Place the warrior 5 units in front of the camera (closer for better visibility)
+    const targetPos = camera.position.clone().add(forward.clone().multiplyScalar(5))
+    targetPos.y = -2 // restored to -2 so he stands ON the floor, not in it
 
     // Smoothly follow position
     group.current.position.lerp(targetPos, 15 * delta)
@@ -70,7 +83,7 @@ export function Warrior({ position = [0, -2, 12], rotation = [0, Math.PI, 0], sc
 
     // Determine if moving by checking camera distance delta
     const dist = camera.position.distanceTo(prevPos.current)
-    const isMoving = dist > 0.06 // Increased tolerance to ignore stick drift / floating point micro-movements
+    const isMoving = dist > 0.09 // Very high tolerance to ensure he only walks when firmly moving
 
     if (isMoving) {
       const walk = Object.keys(actions).find(n => n.toLowerCase().includes('walk')) || Object.keys(actions)[0]
