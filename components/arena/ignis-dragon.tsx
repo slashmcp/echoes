@@ -1,8 +1,8 @@
 'use client'
 
 import { useFrame } from '@react-three/fiber'
-import { useGLTF } from '@react-three/drei'
-import { useMemo, useRef } from 'react'
+import { useGLTF, useAnimations } from '@react-three/drei'
+import { useMemo, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 
 import type { BossState } from '@/lib/game/types'
@@ -26,7 +26,19 @@ export function IgnisDragon({ state, isSpeaking, wear }: IgnisDragonProps) {
   const group = useRef<THREE.Group>(null)
   
   // Load the full-body dragon GLB model
-  const { scene } = useGLTF('/red_dragon.glb')
+  const { scene, animations } = useGLTF('/red_dragon.glb')
+  
+  const { actions } = useAnimations(animations, group)
+
+  useEffect(() => {
+    if (actions && Object.keys(actions).length > 0) {
+      console.log('Available Dragon animations:', Object.keys(actions))
+      const animName = Object.keys(actions).find(name => name.toLowerCase().includes('idle')) || Object.keys(actions)[0]
+      if (animName && actions[animName]) {
+        actions[animName].reset().fadeIn(0.5).play()
+      }
+    }
+  }, [actions])
   
   // Clone the scene so we don't mutate shared cached instances
   const clonedScene = useMemo(() => scene.clone(), [scene])
@@ -42,10 +54,21 @@ export function IgnisDragon({ state, isSpeaking, wear }: IgnisDragonProps) {
         // Enable shadows
         child.castShadow = true
         child.receiveShadow = true
+
+        // Safely apply the fiery emissive glow to the original material to preserve textures
+        if (child.material) {
+          const mat = Array.isArray(child.material) ? child.material[0] : child.material
+          if (mat && 'emissive' in mat) {
+            const newMat = (mat as THREE.MeshStandardMaterial).clone()
+            newMat.emissive = new THREE.Color(palette.emissiveColor)
+            newMat.emissiveIntensity = palette.emissiveIntensity
+            child.material = newMat
+          }
+        }
       }
     })
     return mesh
-  }, [clonedScene])
+  }, [clonedScene, palette.emissiveColor, palette.emissiveIntensity])
 
   // Custom dynamic rotation and breathing animation
   useFrame((frameState) => {

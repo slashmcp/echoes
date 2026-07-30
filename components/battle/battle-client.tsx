@@ -1,6 +1,6 @@
 'use client'
 
-import { Map as MapIcon, Volume2, VolumeX } from 'lucide-react'
+import { Map as MapIcon, Volume2, VolumeX, MessageSquare, LocateFixed, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ArenaViewport } from '@/components/arena/arena-viewport'
@@ -10,11 +10,13 @@ import { DialoguePanel } from '@/components/battle/dialogue-panel'
 import { OutcomeOverlay } from '@/components/battle/outcome-overlay'
 import { PlayerHud } from '@/components/battle/player-hud'
 import { Button } from '@/components/ui/button'
-import { LairMap } from '@/components/map/lair-map'
 import { useBossVoice } from '@/hooks/use-boss-voice'
 import { useBattleController } from '@/hooks/use-battle-controller'
+import { useDungeonState } from '@/hooks/use-dungeon-state'
 import { soundManager } from '@/lib/audio/sound-manager'
+import { cn } from '@/lib/utils'
 import type { DialogueEntry, GameSession, Profile } from '@/lib/game/types'
+import type { InstancedFloorHandle } from '@/components/arena/instanced-floor'
 
 interface BattleClientProps {
   profile: Profile
@@ -22,6 +24,28 @@ interface BattleClientProps {
   initialEntries: DialogueEntry[]
   isAnonymous: boolean
   hasUser: boolean
+}
+
+/**
+ * Pick a random floor tile to destroy during a Lair Action.
+ * Avoids tiles that are already destroyed and the player's current tile.
+ * Falls back to a random coord if no safe tile is available.
+ */
+function pickLairActionTarget(
+  destroyedIds: Set<string>,
+  playerX = 3,
+  playerY = 6,
+): { x: number; y: number } {
+  const candidates: { x: number; y: number }[] = []
+  for (let y = 0; y < 7; y++) {
+    for (let x = 0; x < 7; x++) {
+      if (x === playerX && y === playerY) continue
+      if (destroyedIds.has(`tile_${x}_${y}`)) continue
+      candidates.push({ x, y })
+    }
+  }
+  if (candidates.length === 0) return { x: Math.floor(Math.random() * 7), y: Math.floor(Math.random() * 7) }
+  return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
 export function BattleClient({ profile, initialSession, initialEntries, isAnonymous, hasUser }: BattleClientProps) {
@@ -34,22 +58,74 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
   const [shake, setShake] = useState(false)
   const [lastHit, setLastHit] = useState(0)
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
-  const [showMap, setShowMap] = useState(true)
+  const [isChatOpen, setIsChatOpen] = useState(false)
+
+  // ── Phase 2: Dungeon Instance ID ───────────────────────────────────────────
+  // We derive a stable dungeon instance from the current session.
+  // In a full implementation this would be fetched/created from the DB;
+  // here we use session.id as the dungeon_instance_id for simplicity.
+  const dungeonInstanceId = session?.id ?? null
+
+  // ── Phase 2: Persistent tile state ────────────────────────────────────────
+  const { interactions, recordInteraction } = useDungeonState({
+    dungeonInstanceId,
+    roomId: 'ignis_arena',
+  })
+
+  // Derive the set of already-destroyed tile entity IDs from Supabase interactions
+  const destroyedTileIds = new Set(
+    interactions
+      .filter(i => i.interactionType === 'destroyed' && i.entityId.startsWith('tile_'))
+      .map(i => i.entityId)
+  )
+
+  // ── Phase 2: Floor ref for imperative tile destruction ────────────────────
+  const floorRef = useRef<InstancedFloorHandle | null>(null)
+  const handleFloorRef = useCallback(
+    (ref: React.RefObject<InstancedFloorHandle | null>) => {
+      floorRef.current = ref.current
+    },
+    []
+  )
 
   const handleEncounterDragon = useCallback(() => {
-    setShowMap(false)
+    setIsChatOpen(true)
   }, [])
 
+  // ── Phase 2: Voice with AnalyserNode ──────────────────────────────────────
   const voice = useBossVoice(voiceEnabled)
   const spokenIds = useRef<Set<string>>(new Set())
 
   const bossState = session?.bossState ?? 'cocky'
   const isOver = Boolean(session?.outcome) || session === null
 
-  // Speak each new Ignis line exactly once.
+  // ── Phase 2: Lair Action — triggered when boss enters enraged state ────────
+  const lairActionFired = useRef(false)
+
+  useEffect(() => {
+    if (bossState !== 'enraged') {
+      lairActionFired.current = false
+      return
+    }
+    if (lairActionFired.current) return
+    lairActionFired.current = true
+
+    // Pick a tile and destroy it (optimistic visual + Supabase write)
+    const { x, y } = pickLairActionTarget(destroyedTileIds)
+    const entityId = `tile_${x}_${y}`
+
+    // Instant visual via InstancedMesh imperative handle
+    floorRef.current?.destroyTile(x, y)
+
+    // Persist to Supabase (debounced)
+    recordInteraction(entityId, 'destroyed', { x, y, turn: session?.turnCount })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bossState])
+
+  // Speak each new Ignis line exactly once
   useEffect(() => {
     if (!voiceEnabled) return
-    const latest = [...entries].reverse().find((e) => e.speaker === 'ignis')
+    const latest = [...entries].reverse().find(e => e.speaker === 'ignis')
     if (!latest || spokenIds.current.has(latest.id)) return
     spokenIds.current.add(latest.id)
     setSpeakingEntryId(latest.id)
@@ -60,7 +136,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     if (voice.status === 'idle') setSpeakingEntryId(null)
   }, [voice.status])
 
-  // Sync general volume settings with soundManager
+  // Sync volume / ambiance
   useEffect(() => {
     soundManager.setMute(!voiceEnabled)
     if (voiceEnabled) {
@@ -68,23 +144,17 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     } else {
       soundManager.stopAmbiance()
     }
-    return () => {
-      soundManager.stopAmbiance()
-    }
+    return () => { soundManager.stopAmbiance() }
   }, [voiceEnabled])
 
   // Message pop chime
   useEffect(() => {
-    if (entries.length > 0) {
-      soundManager.playMessagePop()
-    }
+    if (entries.length > 0) soundManager.playMessagePop()
   }, [entries.length])
 
   // Enraged state dragon roar
   useEffect(() => {
-    if (bossState === 'enraged') {
-      soundManager.playDragonRoar()
-    }
+    if (bossState === 'enraged') soundManager.playDragonRoar()
   }, [bossState])
 
   const triggerShake = useCallback(() => {
@@ -97,6 +167,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     setError(null)
     voice.stop()
     spokenIds.current.clear()
+    lairActionFired.current = false
 
     try {
       const response = await fetch('/api/session', { method: 'POST' })
@@ -125,7 +196,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         createdAt: new Date().toISOString(),
       }
 
-      setEntries((prev) => [...prev, optimistic])
+      setEntries(prev => [...prev, optimistic])
       setIsThinking(true)
       setError(null)
 
@@ -145,14 +216,14 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         }
 
         setSession(data.session)
-        setEntries((prev) => [
-          ...prev.filter((entry) => entry.id !== optimistic.id),
+        setEntries(prev => [
+          ...prev.filter(entry => entry.id !== optimistic.id),
           ...data.entries,
         ])
 
         if (data.absorbedByShield > 0) {
           soundManager.playShieldShatter()
-          setEntries((prev) => [
+          setEntries(prev => [
             ...prev,
             {
               id: `shield-${Date.now()}`,
@@ -166,7 +237,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           ])
         }
       } catch (caught) {
-        setEntries((prev) => prev.filter((entry) => entry.id !== optimistic.id))
+        setEntries(prev => prev.filter(entry => entry.id !== optimistic.id))
         setError(caught instanceof Error ? caught.message : 'Something went wrong.')
       } finally {
         setIsThinking(false)
@@ -188,7 +259,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       createdAt: new Date().toISOString(),
     }
 
-    setEntries((prev) => [...prev, optimistic])
+    setEntries(prev => [...prev, optimistic])
     setIsThinking(true)
     setError(null)
 
@@ -208,14 +279,14 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       }
 
       setSession(data.session)
-      setEntries((prev) => [
-        ...prev.filter((entry) => entry.id !== optimistic.id),
+      setEntries(prev => [
+        ...prev.filter(entry => entry.id !== optimistic.id),
         ...data.entries,
       ])
 
       if (data.absorbedByShield > 0) {
         soundManager.playShieldShatter()
-        setEntries((prev) => [
+        setEntries(prev => [
           ...prev,
           {
             id: `shield-${Date.now()}`,
@@ -229,7 +300,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         ])
       }
     } catch (caught) {
-      setEntries((prev) => prev.filter((entry) => entry.id !== optimistic.id))
+      setEntries(prev => prev.filter(entry => entry.id !== optimistic.id))
       setError(caught instanceof Error ? caught.message : 'Strike failed.')
     } finally {
       setIsThinking(false)
@@ -237,7 +308,7 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
   }, [isThinking, session, triggerShake])
 
   const toggleVoice = useCallback(() => {
-    setVoiceEnabled((prev) => {
+    setVoiceEnabled(prev => {
       if (prev) voice.stop()
       return !prev
     })
@@ -247,11 +318,10 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     setShowMap(prev => !prev)
   }, [])
 
-  // Keyboard navigation/shortcuts: 'M' toggles map, 'Esc' closes map
+  // Keyboard shortcuts: M = map toggle, Esc = close map
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key.toLowerCase() === 'm') {
-        // Toggle map only if not typing in input
         const activeEl = document.activeElement?.tagName.toLowerCase()
         if (activeEl !== 'textarea' && activeEl !== 'input') {
           e.preventDefault()
@@ -265,30 +335,22 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [toggleMap])
 
-  // Controller hook setup
   const controller = useBattleController({
     onSubmit: () => {
-      // Find the form submit action
       const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement
-      if (submitBtn && !submitBtn.disabled) {
-        submitBtn.click()
-      }
+      if (submitBtn && !submitBtn.disabled) submitBtn.click()
     },
     onClear: () => {
       const txt = document.getElementById('answer') as HTMLTextAreaElement
       if (txt) {
         txt.value = ''
-        // Dispatch synthetic change event to update React input state
-        const e = new Event('input', { bubbles: true })
-        txt.dispatchEvent(e)
+        txt.dispatchEvent(new Event('input', { bubbles: true }))
       }
     },
     onStrike: sendStrike,
     onReplay: () => {
-      const latest = [...entries].reverse().find((e) => e.speaker === 'ignis')
-      if (latest) {
-        void voice.speak(latest.transcript, latest.bossState ?? 'cocky')
-      }
+      const latest = [...entries].reverse().find(e => e.speaker === 'ignis')
+      if (latest) void voice.speak(latest.transcript, latest.bossState ?? 'cocky')
     },
     onToggleMap: toggleMap,
     onToggleVoice: toggleVoice,
@@ -299,21 +361,62 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       {/* Arena */}
       <section
         aria-label="The arena"
-        className="relative flex min-h-0 flex-1 flex-col lg:w-3/5"
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col transition-all duration-300",
+          isChatOpen ? "lg:w-3/5" : "w-full"
+        )}
       >
         <ArenaViewport
           state={bossState}
           isSpeaking={voice.isSpeaking}
           bossHealth={session?.bossHealth ?? 500}
           shake={shake}
-          showMap={showMap}
           onEncounterDragon={handleEncounterDragon}
+          analyserRef={voice.analyserRef}
+          onFloorRef={handleFloorRef}
+          destroyedTileIds={destroyedTileIds}
           className="absolute inset-0 h-full w-full"
         />
 
+        {/* Floating controls when chat is hidden */}
+        {!isChatOpen && (
+          <div className="absolute right-4 top-4 z-20 flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsChatOpen(true)}
+              className="gap-1.5 text-[10px] tracking-widest uppercase border border-border/30 bg-background/50 backdrop-blur"
+            >
+              <MessageSquare className="size-3.5" />
+              Chat
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => window.dispatchEvent(new CustomEvent('teleport-dragon'))}
+              className="gap-1.5 text-[10px] tracking-widest uppercase border border-border/30 bg-background/50 backdrop-blur"
+            >
+              <LocateFixed className="size-3.5" />
+              Find Dragon
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={toggleVoice}
+              aria-pressed={voiceEnabled}
+              className="gap-1.5 text-[10px] tracking-widest uppercase border border-border/30 bg-background/50 backdrop-blur"
+            >
+              {voiceEnabled ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+            </Button>
+          </div>
+        )}
+
         {/* Boss HUD floats over the arena */}
         <div className="pointer-events-none relative z-10 p-4 sm:p-6">
-          <div className="panel-etched pointer-events-auto max-w-xl border border-border p-3 sm:p-4">
+          <div className="panel-etched pointer-events-auto max-w-xl border border-border p-3 sm:p-4 animate-in fade-in zoom-in-95 duration-500">
             <BossHud
               bossHealth={session?.bossHealth ?? 500}
               bossState={bossState}
@@ -350,10 +453,11 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       </section>
 
       {/* Dialogue column */}
-      <section
-        aria-label="Duel transcript"
-        className="flex min-h-0 flex-1 flex-col border-t border-border bg-card/45 lg:w-2/5 lg:flex-none lg:border-t-0 lg:border-l"
-      >
+      {isChatOpen && (
+        <section
+          aria-label="Duel transcript"
+          className="flex min-h-0 flex-1 flex-col border-t border-border bg-card/45 lg:w-2/5 lg:flex-none lg:border-t-0 lg:border-l animate-in slide-in-from-right-4 duration-300"
+        >
         <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex flex-col">
             <h1 className="font-serif text-[11px] font-bold tracking-[0.34em] text-primary uppercase">
@@ -372,6 +476,16 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsChatOpen(false)}
+              className="gap-1.5 text-[10px] tracking-widest uppercase"
+            >
+              <X className="size-3.5" />
+              Close
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -415,7 +529,8 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           disabled={isThinking || isOver}
           onStrike={sendStrike}
         />
-      </section>
+        </section>
+      )}
     </div>
   )
 }

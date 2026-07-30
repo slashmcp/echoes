@@ -1,8 +1,9 @@
 'use client'
 
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
+import * as THREE from 'three'
 
 import { MAX_BOSS_HEALTH } from '@/lib/game/content'
 import { cn } from '@/lib/utils'
@@ -14,9 +15,140 @@ interface ArenaViewportProps {
   isSpeaking: boolean
   bossHealth: number
   shake: boolean
-  showMap: boolean
   onEncounterDragon?: () => void
+  /** AnalyserNode ref from useBossVoice — drives audio-reactive lighting */
+  analyserRef?: React.RefObject<AnalyserNode | null>
   className?: string
+}
+
+function WASDControls({ controlsRef, onEncounterDragon }: { controlsRef: React.RefObject<any>, onEncounterDragon?: () => void }) {
+  const { camera } = useThree()
+  const moveState = useRef({ forward: 0, right: 0 })
+  const hasEncountered = useRef(false)
+
+  useEffect(() => {
+    const handleTeleport = () => {
+      camera.position.set(0, 1.2, 12)
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, 1.2, 11.9)
+        controlsRef.current.update()
+      }
+    }
+    window.addEventListener('teleport-dragon', handleTeleport)
+    return () => window.removeEventListener('teleport-dragon', handleTeleport)
+  }, [camera, controlsRef])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in chat
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
+
+      const key = e.key.toLowerCase()
+      if (key === 'w' || key === 'arrowup') moveState.current.forward = 1
+      if (key === 's' || key === 'arrowdown') moveState.current.forward = -1
+      if (key === 'a' || key === 'arrowleft') moveState.current.right = -1
+      if (key === 'd' || key === 'arrowright') moveState.current.right = 1
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+      if (key === 'w' || key === 'arrowup') {
+        if (moveState.current.forward === 1) moveState.current.forward = 0
+      }
+      if (key === 's' || key === 'arrowdown') {
+        if (moveState.current.forward === -1) moveState.current.forward = 0
+      }
+      if (key === 'a' || key === 'arrowleft') {
+        if (moveState.current.right === -1) moveState.current.right = 0
+      }
+      if (key === 'd' || key === 'arrowright') {
+        if (moveState.current.right === 1) moveState.current.right = 0
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
+
+  useFrame((_, delta) => {
+    if (!controlsRef.current) return
+
+    let { forward, right } = moveState.current
+    let rightStickX = 0
+    let rightStickY = 0
+
+    // Gamepad support
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : []
+    const gp = Array.from(gamepads).find(g => g !== null)
+    if (gp?.axes) {
+      const deadzone = 0.1
+      // Left stick Y axis (forward/backward)
+      if (Math.abs(gp.axes[1]) > deadzone) forward -= gp.axes[1] 
+      // Left stick X axis (left/right)
+      if (Math.abs(gp.axes[0]) > deadzone) right += gp.axes[0]
+      
+      // Right stick X axis (look left/right)
+      if (Math.abs(gp.axes[2]) > deadzone) rightStickX = gp.axes[2]
+      // Right stick Y axis (look up/down)
+      if (Math.abs(gp.axes[3]) > deadzone) rightStickY = gp.axes[3]
+      
+      // Clamp values
+      forward = Math.max(-1, Math.min(1, forward))
+      right = Math.max(-1, Math.min(1, right))
+    }
+
+    if (forward === 0 && right === 0 && rightStickX === 0 && rightStickY === 0) return
+
+    if (forward !== 0 || right !== 0) {
+      const speed = 7.0 * delta // Movement speed
+
+      // Get camera's forward direction on the XZ plane
+      const forwardVector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+      forwardVector.y = 0
+      if (forwardVector.lengthSq() > 0.001) forwardVector.normalize()
+
+      // Get right direction
+      const rightVector = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+      rightVector.y = 0
+      if (rightVector.lengthSq() > 0.001) rightVector.normalize()
+
+      // Combine for movement
+      const movement = new THREE.Vector3()
+      if (forward !== 0) movement.addScaledVector(forwardVector, forward * speed)
+      if (right !== 0) movement.addScaledVector(rightVector, right * speed)
+
+      // Apply movement to camera and target
+      camera.position.add(movement)
+      controlsRef.current.target.add(movement)
+    }
+
+    if (rightStickX !== 0 || rightStickY !== 0) {
+      const lookSpeed = 2.0 * delta
+      const lookDir = new THREE.Vector3().subVectors(controlsRef.current.target, camera.position)
+      
+      if (rightStickX !== 0) {
+        lookDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), -rightStickX * lookSpeed)
+      }
+      
+      if (rightStickY !== 0) {
+        const rightAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+        lookDir.applyAxisAngle(rightAxis, -rightStickY * lookSpeed)
+      }
+      
+      controlsRef.current.target.copy(camera.position).add(lookDir)
+    }
+
+    // Check distance for encounter
+    if (!hasEncountered.current && camera.position.z < 15) {
+      hasEncountered.current = true
+      onEncounterDragon?.()
+    }
+  })
+
+  return null
 }
 
 export function ArenaViewport({
@@ -24,11 +156,12 @@ export function ArenaViewport({
   isSpeaking,
   bossHealth,
   shake,
-  showMap,
   onEncounterDragon,
+  analyserRef,
   className,
 }: ArenaViewportProps) {
   const wear = 1 - Math.max(0, Math.min(1, bossHealth / MAX_BOSS_HEALTH))
+  const controlsRef = useRef<any>(null)
 
   return (
     <div
@@ -39,27 +172,28 @@ export function ArenaViewport({
       )}
     >
       <Canvas
-        camera={{ position: [0, 1.2, 5.8], fov: 42 }}
+        camera={{ position: [0, 1.2, 40], fov: 42 }}
         dpr={[1, 1.75]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         shadows
       >
         <Suspense fallback={null}>
-          <ArenaScene 
-            state={state} 
-            isSpeaking={isSpeaking} 
-            wear={wear} 
-            showMap={showMap} 
-            onEncounterDragon={onEncounterDragon}
+          <ArenaScene
+            state={state}
+            isSpeaking={isSpeaking}
+            wear={wear}
+            analyserRef={analyserRef}
           />
         </Suspense>
-        <OrbitControls 
-          enableZoom={true} 
-          minDistance={2} 
-          maxDistance={12} 
-          minPolarAngle={0.2} 
-          maxPolarAngle={Math.PI / 2 - 0.05} 
-          enablePan={true}
+        <WASDControls controlsRef={controlsRef} onEncounterDragon={onEncounterDragon} />
+        <OrbitControls
+          ref={controlsRef}
+          target={[0, 1.2, 39.9]}
+          enableZoom={false}
+          enablePan={false}
+          minPolarAngle={0.1}
+          maxPolarAngle={Math.PI - 0.1}
+          makeDefault
         />
       </Canvas>
 
@@ -85,7 +219,7 @@ export function ArenaViewport({
         }}
       />
 
-      {/* Vignette + scanline for that CRT-cinematic feel */}
+      {/* Vignette + scanline cinematic overlay */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
