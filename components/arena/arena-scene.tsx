@@ -24,7 +24,7 @@ import { BlackDragon } from './black-dragon'
 import { AudioReactiveLights } from './audio-reactive-lights'
 import { Player } from './player'
 import { Paladin } from './paladin'
-import { Alien } from './alien'
+// Alien removed
 import { CrystalBall } from './crystal-ball'
 import { DragonShieldItem } from './dragon-shield-item'
 
@@ -243,24 +243,7 @@ function ArenaEnvironment() {
   )
 }
 
-function AliensInTheDark() {
-  // Scatter them far off into the fog
-  const alienPositions = useMemo(() => [
-    { pos: [-18, -2, 10] as [number, number, number], rot: [0, Math.PI / 3, 0] as [number, number, number], text: "Twerk for the Dragon...", animType: 'twerk' as const },
-    { pos: [22, -2, -5] as [number, number, number], rot: [0, -Math.PI / 4, 0] as [number, number, number], text: "We love the heat!", animType: 'twerk' as const },
-    { pos: [15, -2, 35] as [number, number, number], rot: [0, Math.PI, 0] as [number, number, number], text: "Productivity is a lie.", animType: 'twerk' as const },
-    { pos: [-25, -2, -2] as [number, number, number], rot: [0, Math.PI / 2, 0] as [number, number, number], text: "You can't see us!", animType: 'twerk' as const },
-    { pos: [5, -2, 45] as [number, number, number], rot: [0, Math.PI * 1.2, 0] as [number, number, number], text: "Join the dark side.", animType: 'twerk' as const }
-  ], [])
-
-  return (
-    <group>
-      {alienPositions.map((a, i) => (
-        <Alien key={i} position={a.pos} rotation={a.rot} text={a.text} animType={a.animType} />
-      ))}
-    </group>
-  )
-}
+// AliensInTheDark removed
 
 // ── ArenaScene (exported) ─────────────────────────────────────────────────────
 export function ArenaScene({
@@ -292,7 +275,7 @@ export function ArenaScene({
 
       <DungeonMap />
       <ArenaEnvironment />
-      <AliensInTheDark />
+      {/* Aliens removed */}
       <Embers intensity={intensity} />
       {onCrystalBallClick && <CrystalBall position={[6, 0.6, 20]} onClick={onCrystalBallClick} />}
       {!hasDragonShield && onLootShield && (
