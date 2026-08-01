@@ -30,7 +30,7 @@ export function Alien({ text = "We see you...", animType = 'twerk', ...props }: 
   const group = React.useRef<THREE.Group>(null)
   
   // Load the base GLTF model (which contains 'mixamo.com' - twerk)
-  const { scene, animations: twerkAnimations } = useGLTF('https://github.com/slashmcp/echoes/releases/download/v1.0.0/alien.glb')
+  const { scene, animations: twerkAnimations } = useGLTF('/alien.glb')
   
   const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene])
   const { nodes, materials } = useGraph(clone) as GLTFResult
@@ -75,4 +75,4 @@ export function Alien({ text = "We see you...", animType = 'twerk', ...props }: 
   )
 }
 
-useGLTF.preload('https://github.com/slashmcp/echoes/releases/download/v1.0.0/alien.glb')
+useGLTF.preload('/alien.glb')
