@@ -17,7 +17,7 @@ export default async function BattlePage() {
         .from('profiles')
         .select('id, username, victories, defeats')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
     : { data: null }
 
   const profile = profileRow ?? {
