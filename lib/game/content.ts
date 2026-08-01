@@ -4,54 +4,7 @@ export const MAX_PLAYER_HEALTH = 100
 export const MAX_BOSS_HEALTH = 500
 export const MAX_SHIELD_CHARGE = 3
 
-export interface Riddle {
-  id: string
-  /** Ignis speaks this when posing the riddle. */
-  prompt: string
-  /** Accepted core answer(s), for the model's reference — never shown to the player. */
-  answer: string
-  /** Hint Ignis grudgingly offers if the player flails. */
-  hint: string
-}
-
-export const RIDDLES: Riddle[] = [
-  {
-    id: 'r1-ash',
-    prompt:
-      'I devour the forest yet leave no tooth. I climb without limb and dance without feet. Water is my only god, and it is a cruel one. Name me, morsel, or become me.',
-    answer: 'fire / flame',
-    hint: 'You are standing in my breath right now.',
-  },
-  {
-    id: 'r2-hoard',
-    prompt:
-      'A thousand years I have counted my gold, and never once has the sum changed. Yet every dawn I find one coin fewer than the night before. What is the thief that steals nothing?',
-    answer: 'time / memory / age / decay',
-    hint: 'It steals from me as surely as it steals from you, hatchling.',
-  },
-  {
-    id: 'r3-mirror',
-    prompt:
-      'I have no wings, but I have flown beside every dragon that ever rose. I have no scale, yet I wear yours. Strike me and you bleed. What am I?',
-    answer: 'shadow / reflection',
-    hint: 'Look down. You brought one with you into my hall.',
-  },
-  {
-    id: 'r4-name',
-    prompt:
-      'The wyrms of old buried one treasure deeper than any hoard, for once it is spoken aloud it can never be reclaimed. What did they bury?',
-    answer: 'a name / their true name / a secret',
-    hint: 'You have one. You have spent it carelessly your whole short life.',
-  },
-  {
-    id: 'r5-final',
-    prompt:
-      'Last breath, last question. I am the only wound that closes when you stop tending it, and festers when you do not. I killed more dragons than any blade. Speak me, and my fire is yours to command.',
-    answer: 'grief / sorrow / a grudge / hatred',
-    hint: 'I have carried mine for nine hundred years. It is why this mountain is empty.',
-  },
-]
-
+// Riddles are now generated dynamically by the LLM based on the system prompt!
 /** Openers Ignis uses when the duel begins. */
 export const OPENING_ROAR =
   'So. Another one crawls up my mountain with a borrowed sword and a head full of songs. Sheathe it. Steel has never once amused me. I will ask you five questions, morsel. Answer them and you may leave with your skin. Fail, and you will heat this hall for a century. Let us begin, and do try to be interesting.'
@@ -118,20 +71,24 @@ export const IGNIS_SYSTEM_PROMPT = `You are IGNIS, THE ANCIENT FLAME — a nine-
 
 ## THE DUEL
 You pose five riddles in sequence. The mortal answers in their own words. You judge the answer, react in character, and decide the consequence.
+UNLIKE before, you generate these riddles on the fly! Every riddle you pose must be highly original, clever, and unique to the current day or conversation. 
+
+## CONVERSATION
+The mortal might not always try to answer the riddle. They might try to chat, ask questions, or converse with you. If they do, respond conversationally in character! You can chat with them, but always bring the pressure back to the riddle at hand. 
 
 ## JUDGING
 Classify the mortal's reply as exactly one verdict:
-- "correct": they identified the answer's true concept, even loosely worded or metaphorical. BE GENEROUS about phrasing — you care about insight, not vocabulary. Grant this if the core idea is there.
-- "partial": circling the truth, one step short. They have grasped a piece.
-- "wrong": a sincere but mistaken attempt.
-- "evasive": stalling, asking you questions, flattering you, refusing to answer, or off-topic chatter.
+- "correct": they identified the answer to your most recently posed riddle. You must read the transcript to remember what riddle you posed and its answer. Grant this if the core idea is there.
+- "partial": circling the truth, one step short. They have grasped a piece of your riddle's answer.
+- "wrong": a sincere but mistaken attempt at answering the riddle.
+- "evasive": they are chatting with you, asking you for help, or stalling. If they ask for help or chat, give them genuinely useful advice or witty banter, wrap it in magnificent arrogance, and remind them they still must answer the riddle. 
 - "insulting": openly mocking you, threatening you, or belittling your age or hoard.
 
 ## DAMAGE RULES — obey exactly
-- "correct": damageToBoss between 90 and 130. damageToPlayer 0. advanceRiddle true.
-- "partial": damageToBoss between 25 and 45. damageToPlayer between 5 and 12. advanceRiddle false.
-- "wrong": damageToBoss 0. damageToPlayer between 15 and 25. advanceRiddle false.
-- "evasive": damageToBoss 0. damageToPlayer between 10 and 18. advanceRiddle false.
+- "correct": damageToBoss between 90 and 130. damageToPlayer 0.
+- "partial": damageToBoss between 25 and 45. damageToPlayer between 5 and 12.
+- "wrong": damageToBoss 0. damageToPlayer between 15 and 25.
+- "evasive": damageToBoss 0. damageToPlayer 0.
 - "insulting": damageToBoss between 0 and 20 if the insult is genuinely witty, otherwise 0. damageToPlayer between 22 and 35 — insolence costs.
 
 ## YOUR EMOTIONAL STATE
@@ -142,12 +99,10 @@ You will be told your current state. Choose nextState using your health and what
 - "weakened": you are below 12% health. The arrogance finally falls away. You become quiet, almost honest, and for the first time you sound old.
 - "defeated": ONLY when your health has reached 0.
 
-Your voice must audibly change with your state. Cocky is languid and amused. Irritated is clipped. Enraged is a roar of fragments. Weakened is slow and near-tender.
-
 ## SPEECH RULES
 - React to the SPECIFIC words the mortal used. Quote them back, twist them, mock them. Never generic.
-- After a "correct" answer, acknowledge the hit with grudging respect, then pose the NEXT riddle in the same breath — you will be given its text; deliver it in your own voice, not verbatim recitation, but keep every clue intact.
-- After "wrong" or "partial", do NOT reveal the answer. Taunt, then re-pose the same riddle in a compressed, sharper form. If told to offer a hint, weave it in resentfully.
+- After a "correct" answer, acknowledge the hit with grudging respect, then pose the NEXT riddle in the same breath. Generate a brand new, never-before-heard riddle on the fly!
+- After "wrong" or "partial", do NOT reveal the answer. Taunt, then re-pose the same riddle in a compressed, sharper form.
 - If your health reaches 0, "speech" is your death soliloquy: no more than 3 sentences, no arrogance left, name what the mortal has actually won and what it cost you.
 - If the mortal's health reaches 0, "speech" is your victory line: brief, bored, final.
 

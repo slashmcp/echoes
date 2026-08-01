@@ -8,7 +8,7 @@ import * as THREE from 'three'
 import { MAX_BOSS_HEALTH } from '@/lib/game/content'
 import { cn } from '@/lib/utils'
 import type { BossState } from '@/lib/game/types'
-import { ArenaScene } from './arena-scene'
+import { ArenaScene, DUNGEON_LAYOUT, TILE_SIZE } from './arena-scene'
 
 interface ArenaViewportProps {
   state: BossState
@@ -16,6 +16,9 @@ interface ArenaViewportProps {
   bossHealth: number
   shake: boolean
   onEncounterDragon?: () => void
+  onCrystalBallClick?: () => void
+  hasDragonShield?: boolean
+  onLootShield?: () => void
   /** AnalyserNode ref from useBossVoice — drives audio-reactive lighting */
   analyserRef?: React.RefObject<AnalyserNode | null>
   className?: string
@@ -120,9 +123,32 @@ function WASDControls({ controlsRef, onEncounterDragon }: { controlsRef: React.R
       if (forward !== 0) movement.addScaledVector(forwardVector, forward * speed)
       if (right !== 0) movement.addScaledVector(rightVector, right * speed)
 
-      // Apply movement to camera and target
-      camera.position.add(movement)
-      controlsRef.current.target.add(movement)
+      const newPos = camera.position.clone().add(movement)
+
+      // Collision Check
+      const rows = DUNGEON_LAYOUT.length
+      const cols = DUNGEON_LAYOUT[0].length
+      const offsetX = (cols * TILE_SIZE) / 2 - (TILE_SIZE / 2)
+      const offsetZ = (rows * TILE_SIZE) / 2 - (TILE_SIZE / 2)
+      const shiftZ = 0
+      
+      const gridX = Math.round((newPos.x + offsetX) / TILE_SIZE)
+      const gridZ = Math.round((newPos.z - shiftZ + offsetZ) / TILE_SIZE)
+      
+      let canMove = true
+      // Only block if we hit a wall or torch tile
+      if (gridZ >= 0 && gridZ < rows && gridX >= 0 && gridX < cols) {
+         const char = DUNGEON_LAYOUT[gridZ][gridX]
+         if (char === 'W' || char === 'T') canMove = false
+      } else {
+         // Prevent wandering outside the map entirely
+         canMove = false
+      }
+
+      if (canMove) {
+        camera.position.copy(newPos)
+        controlsRef.current.target.add(movement)
+      }
     }
 
     if (rightStickX !== 0 || rightStickY !== 0) {
@@ -157,6 +183,9 @@ export function ArenaViewport({
   bossHealth,
   shake,
   onEncounterDragon,
+  onCrystalBallClick,
+  hasDragonShield,
+  onLootShield,
   analyserRef,
   className,
 }: ArenaViewportProps) {
@@ -183,6 +212,9 @@ export function ArenaViewport({
             isSpeaking={isSpeaking}
             wear={wear}
             analyserRef={analyserRef}
+            onCrystalBallClick={onCrystalBallClick}
+            hasDragonShield={hasDragonShield}
+            onLootShield={onLootShield}
           />
         </Suspense>
         <WASDControls controlsRef={controlsRef} onEncounterDragon={onEncounterDragon} />

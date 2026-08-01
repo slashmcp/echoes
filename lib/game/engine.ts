@@ -2,7 +2,7 @@ import {
   MAX_BOSS_HEALTH,
   MAX_PLAYER_HEALTH,
   MAX_SHIELD_CHARGE,
-  RIDDLES,
+
 } from './content'
 import type { BossJudgement, BossState, Verdict } from './types'
 
@@ -70,7 +70,7 @@ export function resolveTurn(
   // A correct answer both advances the riddle and earns a shield charge.
   const advance = raw.verdict === 'correct'
   const riddleIndex = advance
-    ? Math.min(current.riddleIndex + 1, RIDDLES.length)
+    ? Math.min(current.riddleIndex + 1, 5)
     : current.riddleIndex
   if (advance) {
     shieldCharge = clamp(shieldCharge + 1, 0, MAX_SHIELD_CHARGE)
@@ -101,9 +101,7 @@ export function resolveTurn(
   }
 }
 
-export function riddleAt(index: number) {
-  return RIDDLES[index] ?? null
-}
+
 
 const STRIKE_IGNIS_LINES = [
   "You scratched a scale. One. Scale. I've had fleas draw more blood.",

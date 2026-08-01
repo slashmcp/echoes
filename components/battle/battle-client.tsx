@@ -1,6 +1,6 @@
 'use client'
 
-import { Map as MapIcon, Volume2, VolumeX, MessageSquare, LocateFixed, X } from 'lucide-react'
+import { Map as MapIcon, Volume2, VolumeX, MessageSquare, LocateFixed, X, Eye, EyeOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ArenaViewport } from '@/components/arena/arena-viewport'
@@ -9,6 +9,7 @@ import { BossHud } from '@/components/battle/boss-hud'
 import { DialoguePanel } from '@/components/battle/dialogue-panel'
 import { OutcomeOverlay } from '@/components/battle/outcome-overlay'
 import { PlayerHud } from '@/components/battle/player-hud'
+import { CrystalBallUI } from '@/components/battle/crystal-ball-ui'
 import { Button } from '@/components/ui/button'
 import { useBossVoice } from '@/hooks/use-boss-voice'
 import { useBattleController } from '@/hooks/use-battle-controller'
@@ -59,6 +60,9 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
   const [lastHit, setLastHit] = useState(0)
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [showHud, setShowHud] = useState(true)
+  const [showMap, setShowMap] = useState(false)
+  const [showCrystalBallUI, setShowCrystalBallUI] = useState(false)
 
   // ── Phase 2: Dungeon Instance ID ───────────────────────────────────────────
   // We derive a stable dungeon instance from the current session.
@@ -78,6 +82,12 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
       .filter(i => i.interactionType === 'destroyed' && i.entityId.startsWith('tile_'))
       .map(i => i.entityId)
   )
+
+  const hasDragonShield = interactions.some(i => i.entityId === 'dragon_shield' && i.interactionType === 'looted')
+  const handleLootShield = useCallback(() => {
+    recordInteraction('dragon_shield', 'looted')
+    soundManager.playMessagePop() // Add a little audio feedback
+  }, [recordInteraction])
 
   // ── Phase 2: Floor ref for imperative tile destruction ────────────────────
   const floorRef = useRef<InstancedFloorHandle | null>(null)
@@ -314,26 +324,33 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
     })
   }, [voice])
 
+  const toggleHud = useCallback(() => {
+    setShowHud(prev => !prev)
+  }, [])
+
   const toggleMap = useCallback(() => {
     setShowMap(prev => !prev)
   }, [])
 
-  // Keyboard shortcuts: M = map toggle, Esc = close map
+  // Keyboard shortcuts: M = map toggle, H = HUD toggle, Esc = close map
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const activeEl = document.activeElement?.tagName.toLowerCase()
+      if (activeEl === 'textarea' || activeEl === 'input') return
+
       if (e.key.toLowerCase() === 'm') {
-        const activeEl = document.activeElement?.tagName.toLowerCase()
-        if (activeEl !== 'textarea' && activeEl !== 'input') {
-          e.preventDefault()
-          toggleMap()
-        }
+        e.preventDefault()
+        toggleMap()
+      } else if (e.key.toLowerCase() === 'h') {
+        e.preventDefault()
+        toggleHud()
       } else if (e.key === 'Escape') {
         setShowMap(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleMap])
+  }, [toggleMap, toggleHud])
 
   const controller = useBattleController({
     onSubmit: () => {
@@ -372,6 +389,9 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
           bossHealth={session?.bossHealth ?? 500}
           shake={shake}
           onEncounterDragon={handleEncounterDragon}
+          onCrystalBallClick={() => setShowCrystalBallUI(true)}
+          hasDragonShield={hasDragonShield}
+          onLootShield={handleLootShield}
           analyserRef={voice.analyserRef}
           onFloorRef={handleFloorRef}
           destroyedTileIds={destroyedTileIds}
@@ -405,6 +425,16 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
               type="button"
               variant="secondary"
               size="sm"
+              onClick={toggleHud}
+              aria-pressed={showHud}
+              className="gap-1.5 text-[10px] tracking-widest uppercase border border-border/30 bg-background/50 backdrop-blur"
+            >
+              {showHud ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={toggleVoice}
               aria-pressed={voiceEnabled}
               className="gap-1.5 text-[10px] tracking-widest uppercase border border-border/30 bg-background/50 backdrop-blur"
@@ -415,30 +445,34 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
         )}
 
         {/* Boss HUD floats over the arena */}
-        <div className="pointer-events-none relative z-10 p-4 sm:p-6">
-          <div className="panel-etched pointer-events-auto max-w-xl border border-border p-3 sm:p-4 animate-in fade-in zoom-in-95 duration-500">
-            <BossHud
-              bossHealth={session?.bossHealth ?? 500}
-              bossState={bossState}
-              riddleIndex={session?.currentRiddleIndex ?? 0}
-              lastHit={lastHit}
-            />
+        {showHud && (
+          <div className="pointer-events-none relative z-10 p-4 sm:p-6">
+            <div className="panel-etched pointer-events-auto max-w-xl border border-border p-3 sm:p-4 animate-in fade-in zoom-in-95 duration-500">
+              <BossHud
+                bossHealth={session?.bossHealth ?? 500}
+                bossState={bossState}
+                riddleIndex={session?.currentRiddleIndex ?? 0}
+                lastHit={lastHit}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-1" />
 
         {/* Player HUD anchored to the arena floor */}
-        <div className="relative z-10 p-4 sm:p-6">
-          <div className="panel-etched max-w-md border border-border p-3 sm:p-4">
-            <PlayerHud
-              username={profile.username}
-              playerHealth={session?.playerHealth ?? 100}
-              shieldCharge={session?.shieldCharge ?? 0}
-              turnCount={session?.turnCount ?? 0}
-            />
+        {showHud && (
+          <div className="relative z-10 p-4 sm:p-6">
+            <div className="panel-etched max-w-md border border-border p-3 sm:p-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <PlayerHud
+                username={profile.username}
+                playerHealth={session?.playerHealth ?? 100}
+                shieldCharge={session?.shieldCharge ?? 0}
+                turnCount={session?.turnCount ?? 0}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {(isOver || !session) && (
           <OutcomeOverlay
@@ -449,6 +483,10 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
             isAnonymous={isAnonymous || !hasUser}
             onStart={startDuel}
           />
+        )}
+        
+        {showCrystalBallUI && (
+          <CrystalBallUI onClose={() => setShowCrystalBallUI(false)} />
         )}
       </section>
 
@@ -495,6 +533,17 @@ export function BattleClient({ profile, initialSession, initialEntries, isAnonym
             >
               <MapIcon className="size-3.5" />
               Map (M)
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleHud}
+              aria-pressed={showHud}
+              className="gap-1.5 text-[10px] tracking-widest uppercase"
+            >
+              {showHud ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+              {showHud ? 'Hide HUD (H)' : 'Show HUD (H)'}
             </Button>
             <Button
               type="button"

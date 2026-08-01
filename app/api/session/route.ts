@@ -1,4 +1,4 @@
-import { MAX_BOSS_HEALTH, MAX_PLAYER_HEALTH, OPENING_ROAR, RIDDLES } from '@/lib/game/content'
+import { MAX_BOSS_HEALTH, MAX_PLAYER_HEALTH, OPENING_ROAR } from '@/lib/game/content'
 import { createClient } from '@/lib/supabase/server'
 
 /** Starts a fresh duel, retiring any duel still in progress. */
@@ -37,7 +37,7 @@ export async function POST() {
     return Response.json({ error: 'The mountain would not open.' }, { status: 500 })
   }
 
-  const opening = `${OPENING_ROAR}\n\n${RIDDLES[0].prompt}`
+  const opening = `${OPENING_ROAR}\n\nI devour the forest yet leave no tooth. I climb without limb and dance without feet. Water is my only god, and it is a cruel one. Name me, morsel, or become me.`
 
   const { data: entry } = await supabase
     .from('dialogue_logs')

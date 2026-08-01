@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 import { GuestEnterButton } from '@/components/auth/guest-enter-button'
 import { Button } from '@/components/ui/button'
-import { RIDDLES } from '@/lib/game/content'
+
 import { createClient } from '@/lib/supabase/server'
 
 const PILLARS = [
@@ -88,7 +88,7 @@ export default async function HomePage() {
           </h1>
 
           <p className="max-w-xl text-sm leading-relaxed text-muted-foreground text-pretty sm:text-base">
-            An ancient dragon waits at the summit with {RIDDLES.length} riddles and no patience. He
+            An ancient dragon waits at the summit with 5 riddles and no patience. He
             hears every word you choose, judges the thought behind it, and burns hotter the closer you
             get. Steel is useless here. Wit is the only weapon that has ever drawn his blood.
           </p>
@@ -133,7 +133,7 @@ export default async function HomePage() {
           {/* First riddle as a teaser */}
           <blockquote className="panel-etched mt-4 max-w-lg border-l-2 border-primary/60 p-5 text-left">
             <p className="font-serif text-[15px] leading-relaxed text-foreground text-pretty">
-              {RIDDLES[0].prompt}
+              I devour the forest yet leave no tooth. I climb without limb and dance without feet. Water is my only god, and it is a cruel one. Name me, morsel, or become me.
             </p>
             <footer className="mt-3 font-serif text-[10px] tracking-[0.3em] text-primary uppercase">
               — Ignis, the Ancient Flame

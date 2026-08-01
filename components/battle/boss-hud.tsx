@@ -1,6 +1,6 @@
 'use client'
 
-import { MAX_BOSS_HEALTH, RIDDLES, STATE_META } from '@/lib/game/content'
+import { MAX_BOSS_HEALTH, STATE_META } from '@/lib/game/content'
 import { cn } from '@/lib/utils'
 import type { BossState } from '@/lib/game/types'
 
@@ -38,7 +38,7 @@ export function BossHud({ bossHealth, bossState, riddleIndex, lastHit }: BossHud
             {meta.label}
           </span>
           <span className="text-[10px] text-muted-foreground">
-            Riddle {Math.min(riddleIndex + 1, RIDDLES.length)} / {RIDDLES.length}
+            Riddle {Math.min(riddleIndex + 1, 5)} / 5
           </span>
         </div>
       </div>

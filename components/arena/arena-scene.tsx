@@ -20,15 +20,22 @@ import * as THREE from 'three'
 
 import { STATE_META } from '@/lib/game/content'
 import type { BossState } from '@/lib/game/types'
-import { IgnisDragon } from './ignis-dragon'
+import { BlackDragon } from './black-dragon'
 import { AudioReactiveLights } from './audio-reactive-lights'
-import { Warrior } from './warrior'
+import { Player } from './player'
+import { Paladin } from './paladin'
+import { Alien } from './alien'
+import { CrystalBall } from './crystal-ball'
+import { DragonShieldItem } from './dragon-shield-item'
 
 interface ArenaSceneProps {
   state: BossState
   isSpeaking: boolean
   wear: number
   analyserRef?: React.RefObject<AnalyserNode | null>
+  onCrystalBallClick?: () => void
+  hasDragonShield?: boolean
+  onLootShield?: () => void
 }
 
 const EMBER_COUNT = 350
@@ -38,6 +45,7 @@ type CellType = 'empty' | 'player' | 'dragon' | 'chest' | 'trap' | 'goal'
 
 // ── Preload floor texture at module level to prevent visual pop-in ─────────────
 useTexture.preload('/Untitled design.png')
+useTexture.preload('/WALL.png')
 
 // ── Embers (unchanged from Phase 1) ──────────────────────────────────────────
 function Embers({ intensity }: { intensity: number }) {
@@ -97,42 +105,113 @@ function Pillar({ position, rotation }: { position: [number, number, number], ro
   return <primitive object={clone} position={position} rotation={rotation || [0, 0, 0]} />
 }
 
-function Pillars() {
-  const pillars = useMemo(() => {
-    const arr = []
-    const spacing = 8
-    const width = 6
-    // Generate pillars from z = 45 down to z = -10
-    for (let z = 45; z >= -10; z -= spacing) {
-      // Left pillar
-      arr.push({
-        position: [-width, -2, z] as [number, number, number],
-        rotation: [0, Math.random() * Math.PI * 2, 0] as [number, number, number],
-      })
-      // Right pillar
-      arr.push({
-        position: [width, -2, z] as [number, number, number],
-        rotation: [0, Math.random() * Math.PI * 2, 0] as [number, number, number],
-      })
+import { DungeonWall } from './dungeon-wall'
+import { Torch } from './torch'
+
+export const TILE_SIZE = 10
+
+export const DUNGEON_LAYOUT = [
+  'WWTWWTWWT', // 0
+  'W.......W', // 1
+  'T...P...T', // 2
+  'W.......W', // 3
+  'T.......T', // 4
+  'W.......W', // 5
+  'T.......T', // 6
+  'W...P...W', // 7
+  'WWT...TWW', // 8
+  '  W...W  ', // 9
+  '  T...T  ', // 10
+  '  W...W  ', // 11
+]
+
+function DungeonMap() {
+  const elements = []
+  
+  // Center the map around [0, 0, 0]
+  const rows = DUNGEON_LAYOUT.length
+  const cols = DUNGEON_LAYOUT[0].length
+  const offsetX = (cols * TILE_SIZE) / 2 - (TILE_SIZE / 2)
+  const offsetZ = (rows * TILE_SIZE) / 2 - (TILE_SIZE / 2)
+  // Shift the Z forward so the dragon sits nicely in the big room
+  const shiftZ = 0
+
+  for (let z = 0; z < rows; z++) {
+    for (let x = 0; x < cols; x++) {
+      const char = DUNGEON_LAYOUT[z][x]
+      if (char === ' ') continue
+
+      const posX = x * TILE_SIZE - offsetX
+      const posZ = z * TILE_SIZE - offsetZ + shiftZ
+
+      // 1. Walls
+      if (char === 'W' || char === 'T') {
+        elements.push(
+          <DungeonWall 
+            key={`wall_${x}_${z}`} 
+            position={[posX, 6, posZ]} // Raised so bottom is on floor
+            size={[TILE_SIZE, 16, TILE_SIZE]} 
+          />
+        )
+      }
+
+      // 2. Torches (attached to walls)
+      if (char === 'T') {
+        // Simple logic to place torch on the face pointing towards the center of the room
+        // If x is on the left half, point right. If on right half, point left.
+        // If on the top half, point down. If on bottom half, point up.
+        // We'll just place a torch slightly inside the wall block facing the nearest empty tile
+        
+        let torchRot: [number, number, number] = [0, 0, 0]
+        let torchX = posX
+        let torchZ = posZ
+        const offset = TILE_SIZE / 2 + 0.1
+
+        // Look around for an empty spot '.' to hang the torch
+        if (x + 1 < cols && DUNGEON_LAYOUT[z][x+1] === '.') {
+          torchX += offset
+          torchRot = [0, -Math.PI / 2, 0]
+        } else if (x - 1 >= 0 && DUNGEON_LAYOUT[z][x-1] === '.') {
+          torchX -= offset
+          torchRot = [0, Math.PI / 2, 0]
+        } else if (z + 1 < rows && DUNGEON_LAYOUT[z+1][x] === '.') {
+          torchZ += offset
+          torchRot = [0, 0, 0]
+        } else if (z - 1 >= 0 && DUNGEON_LAYOUT[z-1][x] === '.') {
+          torchZ -= offset
+          torchRot = [0, Math.PI, 0]
+        }
+
+        elements.push(
+          <Torch 
+            key={`torch_${x}_${z}`} 
+            position={[torchX, 2, torchZ]} 
+            rotation={torchRot} 
+          />
+        )
+      }
+
+      // 3. Pillars
+      if (char === 'P') {
+        elements.push(
+          <Pillar 
+            key={`pillar_${x}_${z}`} 
+            position={[posX, -2, posZ]} 
+            rotation={[0, Math.random() * Math.PI, 0]} 
+          />
+        )
+      }
     }
-    return arr
-  }, [])
+  }
 
-  return (
-    <group>
-      {pillars.map((p, i) => (
-        <Pillar key={i} position={p.position} rotation={p.rotation} />
-      ))}
-    </group>
-  )
+  return <group>{elements}</group>
 }
-useGLTF.preload('/pillar.glb')
 
-// ── Phase 2: Arena Environment (Floor & Wall) ─────────────────────────────────
+// ── Phase 2: Arena Environment (Floor) ─────────────────────────────────
 function ArenaEnvironment() {
   const { gl } = useThree()
 
-  // PBR stone floor material with correct texture settings
+  // PBR stone floor material
   const floorTex = useTexture('/Untitled design.png')
   const stoneMat = useMemo(() => {
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping
@@ -150,23 +229,48 @@ function ArenaEnvironment() {
     })
   }, [floorTex, gl])
 
-  useEffect(() => () => stoneMat.dispose(), [stoneMat])
+  useEffect(() => {
+    return () => stoneMat.dispose()
+  }, [stoneMat])
 
   return (
     <group>
-      {/* PBR stone floor — expanded for free-roaming */}
+      {/* PBR stone floor */}
       <mesh material={stoneMat} position={[0, -2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[200, 200]} />
+        <planeGeometry args={[300, 300]} />
       </mesh>
     </group>
   )
 }
+
+function AliensInTheDark() {
+  // Scatter them far off into the fog
+  const alienPositions = useMemo(() => [
+    { pos: [-18, -2, 10] as [number, number, number], rot: [0, Math.PI / 3, 0] as [number, number, number], text: "Twerk for the Dragon...", animType: 'twerk' as const },
+    { pos: [22, -2, -5] as [number, number, number], rot: [0, -Math.PI / 4, 0] as [number, number, number], text: "We love the heat!", animType: 'twerk' as const },
+    { pos: [15, -2, 35] as [number, number, number], rot: [0, Math.PI, 0] as [number, number, number], text: "Productivity is a lie.", animType: 'twerk' as const },
+    { pos: [-25, -2, -2] as [number, number, number], rot: [0, Math.PI / 2, 0] as [number, number, number], text: "You can't see us!", animType: 'twerk' as const },
+    { pos: [5, -2, 45] as [number, number, number], rot: [0, Math.PI * 1.2, 0] as [number, number, number], text: "Join the dark side.", animType: 'twerk' as const }
+  ], [])
+
+  return (
+    <group>
+      {alienPositions.map((a, i) => (
+        <Alien key={i} position={a.pos} rotation={a.rot} text={a.text} animType={a.animType} />
+      ))}
+    </group>
+  )
+}
+
 // ── ArenaScene (exported) ─────────────────────────────────────────────────────
 export function ArenaScene({
   state,
   isSpeaking,
   wear,
   analyserRef,
+  onCrystalBallClick,
+  hasDragonShield,
+  onLootShield,
 }: ArenaSceneProps) {
   const intensity = STATE_META[state].glow
 
@@ -186,11 +290,16 @@ export function ArenaScene({
         baseIntensity={intensity}
       />
 
-      <Pillars />
+      <DungeonMap />
       <ArenaEnvironment />
+      <AliensInTheDark />
       <Embers intensity={intensity} />
-      <Warrior />
-      <IgnisDragon state={state} isSpeaking={isSpeaking} wear={wear} />
+      {onCrystalBallClick && <CrystalBall position={[6, 0.6, 20]} onClick={onCrystalBallClick} />}
+      {!hasDragonShield && onLootShield && (
+        <DragonShieldItem position={[-8, -1, 10]} onLoot={onLootShield} />
+      )}
+      <Paladin hasDragonShield={hasDragonShield} />
+      <BlackDragon state={state} isSpeaking={isSpeaking} wear={wear} />
     </>
   )
 }

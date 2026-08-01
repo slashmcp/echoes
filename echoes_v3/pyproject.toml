@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "echoes-v3"
+version = "0.1.0"
+description = "Echoes V3: A Textual-based gamified productivity ecosystem"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.70.0",
+    "fastmcp>=0.1.0",
+    "litellm>=1.40.0",
+    "janus>=1.0.0",
+    "ollama>=0.3.0"
+]
+
+[project.scripts]
+echoes = "echoes_v3.ui.app:run"

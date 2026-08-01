@@ -2,8 +2,8 @@ import { google } from '@ai-sdk/google'
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 
-import { IGNIS_SYSTEM_PROMPT, MAX_BOSS_HEALTH, RIDDLES } from '@/lib/game/content'
-import { resolveTurn, resolveStrike, riddleAt } from '@/lib/game/engine'
+import { IGNIS_SYSTEM_PROMPT, MAX_BOSS_HEALTH } from '@/lib/game/content'
+import { resolveTurn, resolveStrike } from '@/lib/game/engine'
 import { createClient } from '@/lib/supabase/server'
 import type { BossJudgement } from '@/lib/game/types'
 
@@ -108,7 +108,6 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: true })
       .limit(24)
 
-    const activeRiddle = riddleAt(session.current_riddle_index)
     const failedAttempts = (history ?? []).filter((h) => h.speaker === 'player').length
     const shouldHint = failedAttempts > 0 && failedAttempts % 3 === 0
 
@@ -118,8 +117,6 @@ export async function POST(request: Request) {
       .map((h) => `${h.speaker === 'player' ? 'MORTAL' : 'YOU'}: ${h.transcript}`)
       .join('\n')
 
-    const nextRiddle = riddleAt(session.current_riddle_index + 1)
-
     const context = [
       `## YOUR CONDITION`,
       `Health: ${session.boss_health} of ${MAX_BOSS_HEALTH} (${bossPct}%)`,
@@ -127,18 +124,18 @@ export async function POST(request: Request) {
       `The mortal's health: ${session.player_health} of 100`,
       `Turn: ${session.turn_count + 1}`,
       ``,
-      `## THE RIDDLE CURRENTLY ON THE TABLE (${session.current_riddle_index + 1} of ${RIDDLES.length})`,
-      activeRiddle
-        ? `Text: ${activeRiddle.prompt}\nTrue answer (NEVER state this outright): ${activeRiddle.answer}`
-        : 'All five riddles are spent. Judge this reply on wit alone.',
-      shouldHint && activeRiddle
-        ? `\nThe mortal has floundered repeatedly. Grudgingly weave in this hint: "${activeRiddle.hint}"`
+      `## THE RIDDLE CURRENTLY ON THE TABLE (${session.current_riddle_index + 1} of 5)`,
+      session.current_riddle_index >= 5
+        ? 'All five riddles are spent. Judge this reply on wit alone.'
+        : `You are on riddle ${session.current_riddle_index + 1}. Check the transcript below to see the riddle you most recently posed.`,
+      shouldHint && session.current_riddle_index < 5
+        ? `\nThe mortal has floundered repeatedly. Grudgingly weave a subtle hint about the answer into your reply.`
         : '',
-      nextRiddle
-        ? `\n## IF the verdict is "correct", pose this next riddle inside your same reply, in your own voice, preserving every clue:\n${nextRiddle.prompt}`
+      session.current_riddle_index < 4
+        ? `\n## IF the verdict is "correct", pose a brand new, highly original riddle inside your same reply, in your own voice.`
         : `\n## This was the FINAL riddle. If the verdict is "correct", the mortal has broken you — set nextState to "defeated" and speak your death soliloquy.`,
       ``,
-      `## THE DUEL SO FAR`,
+      `## THE DUEL SO FAR (Read this to remember your current riddle and the mortal's previous answers)`,
       transcript || '(The mortal has not yet spoken.)',
       ``,
       `## THE MORTAL NOW SAYS`,
@@ -149,16 +146,23 @@ export async function POST(request: Request) {
 
     let raw: BossJudgement
     try {
-      const { output } = await generateText({
-        model: MODEL,
-        system: IGNIS_SYSTEM_PROMPT,
-        prompt: context,
-        temperature: 0.9,
-        output: Output.object({ schema: judgementSchema }),
+      const response = await fetch('http://127.0.0.1:8000/api/oracle/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: IGNIS_SYSTEM_PROMPT + '\n\n' + context,
+          message: message,
+        }),
       })
+
+      if (!response.ok) {
+        throw new Error(`Python API returned ${response.status}: ${await response.text()}`)
+      }
+
+      const output = await response.json()
       raw = { ...output, advanceRiddle: output.verdict === 'correct' }
     } catch (error) {
-      console.log('[v0] Ignis brain failed:', error instanceof Error ? error.message : error)
+      console.log('[v0] Ignis Python brain failed:', error instanceof Error ? error.message : error)
       return Response.json(
         { error: 'The dragon fell silent — something disturbed the connection. Try again.' },
         { status: 502 },
